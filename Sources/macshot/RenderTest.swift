@@ -24,11 +24,26 @@ enum RenderTest {
         hover.hovering = true
         write(ShotView(model: hover).padding(24).background(desk), outBase, "-hover")
 
+        let recents = [
+            Folder(id: "r1", name: "Design", url: URL(fileURLWithPath: "/"), count: 0),
+            Folder(id: "r2", name: "Receipts", url: URL(fileURLWithPath: "/"), count: 0),
+            Folder(id: "r3", name: "Invoices", url: URL(fileURLWithPath: "/"), count: 0),
+        ]
+        let quick = ShotModel(image: img, fileName: "Screenshot", ext: "png", folders: folders, recentFolders: recents)
+        quick.mode = .quickSave
+        write(ShotView(model: quick).padding(24).background(desk), outBase, "-quicksave")
+
         let picker = ShotModel(image: img, fileName: "Screenshot 2026-06-20", ext: "png", folders: folders)
         picker.mode = .picker; picker.selection = 0
         write(ShotView(model: picker).padding(24).background(desk), outBase, "-picker")
 
-        print("rendered \(outBase) (-rest / -hover / -picker)")
+        // Gallery layout (glass + async thumbnails won't render offscreen, but the
+        // structure — gallery on top, settings footer at the bottom — does).
+        let gallery = GalleryModel()
+        gallery.pins = (0..<5).map { URL(fileURLWithPath: "/tmp/macshot-render-pin-\($0).png") }
+        write(GalleryView(model: gallery).background(Color(white: 0.12)).padding(24).background(desk), outBase, "-gallery")
+
+        print("rendered \(outBase) (-rest / -hover / -picker / -gallery)")
     }
 
     @MainActor
