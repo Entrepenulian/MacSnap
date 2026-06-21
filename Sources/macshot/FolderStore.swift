@@ -13,11 +13,13 @@ struct Folder: Identifiable, Hashable {
 final class FolderStore {
     let desktop: URL
     private let defaultsKey: String
+    private let recentsKey: String
 
     init(root: URL? = nil, defaultsKey: String = "macshotFolders") {
         self.desktop = root ?? FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Desktop", isDirectory: true)
         self.defaultsKey = defaultsKey
+        self.recentsKey = defaultsKey + "Recents"
     }
 
     /// The Desktop root — the one target that's always available by default.
@@ -50,6 +52,35 @@ final class FolderStore {
         paths.removeAll { $0 == url.path }
         paths.insert(url.path, at: 0)
         UserDefaults.standard.set(paths, forKey: defaultsKey)
+    }
+
+    /// Record a save target (including the Desktop root) for the quick-save pills.
+    func rememberSave(_ folder: Folder) {
+        var paths = UserDefaults.standard.stringArray(forKey: recentsKey) ?? []
+        paths.removeAll { $0 == folder.url.path }
+        paths.insert(folder.url.path, at: 0)
+        if paths.count > 12 { paths = Array(paths.prefix(12)) }
+        UserDefaults.standard.set(paths, forKey: recentsKey)
+    }
+
+    /// The folders you most recently saved into (newest first), for the quick-save pills.
+    func recentFolders(max: Int = 3) -> [Folder] {
+        let fm = FileManager.default
+        let paths = UserDefaults.standard.stringArray(forKey: recentsKey) ?? []
+        var out: [Folder] = []
+        for p in paths {
+            if p == desktop.path {
+                out.append(desktopFolder())
+            } else {
+                var isDir: ObjCBool = false
+                guard fm.fileExists(atPath: p, isDirectory: &isDir), isDir.boolValue else { continue }
+                let url = URL(fileURLWithPath: p)
+                let count = (try? fm.contentsOfDirectory(atPath: p).count) ?? 0
+                out.append(Folder(id: p, name: url.lastPathComponent, url: url, count: count))
+            }
+            if out.count >= max { break }
+        }
+        return out
     }
 
     @discardableResult
