@@ -1,18 +1,31 @@
 import AppKit
+import SwiftUI
 
 final class AppController: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
     private let watcher = ScreenshotWatcher()
     private let folders = FolderStore()
+    private let pins = PinStore()
     private let stack = OverlayStack()
-    private weak var thumbnailToggle: NSMenuItem?
+    private var galleryPanel: GalleryPanel?
+    private var lastAutoClose = Date.distantPast
+    private let galleryModel = GalleryModel()
+    private var macshotEnabled = true   // on = macshot panel shows + native thumbnail off
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupStatusItem()
-        // Replace the macOS floating thumbnail so macshot owns the moment —
-        // but only flip it (and nudge SystemUIServer) if it isn't already off.
-        if nativeThumbnailEnabled() { setNativeThumbnail(enabled: false) }
-        refreshToggle()
+
+        // Restore the user's choice. First run: macshot takes over. Otherwise respect
+        // whatever they last set, and keep the system pref in sync with it.
+        let defaults = UserDefaults.standard
+        if defaults.object(forKey: "macshotEnabled") == nil {
+            macshotEnabled = true
+            defaults.set(true, forKey: "macshotEnabled")
+        } else {
+            macshotEnabled = defaults.bool(forKey: "macshotEnabled")
+        }
+        setNativeThumbnail(enabled: !macshotEnabled)
+        galleryModel.macshotEnabled = macshotEnabled
 
         watcher.onNewScreenshot = { [weak self] url in self?.present(url) }
         watcher.start()
@@ -48,43 +61,81 @@ final class AppController: NSObject, NSApplicationDelegate {
     private func setupStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {
-            let img = NSImage(systemSymbolName: "camera.viewfinder",
-                              accessibilityDescription: "macshot")
+            let img = NSImage(systemSymbolName: "camera.viewfinder", accessibilityDescription: "macshot")
             img?.isTemplate = true
             button.image = img
+            button.action = #selector(togglePanel)
+            button.target = self
         }
 
-        let menu = NSMenu()
-        menu.addItem(header("macshot — watching \(watcher.directoryName)"))
-        menu.addItem(.separator())
-        menu.addItem(item("Catch the latest screenshot", #selector(testLatest), key: "t"))
-        menu.addItem(item("Open screenshot folder", #selector(openFolder)))
-
-        let toggle = item("Use macshot instead of macOS thumbnail", #selector(toggleThumbnail))
-        thumbnailToggle = toggle
-        menu.addItem(toggle)
-
-        menu.addItem(.separator())
-        menu.addItem(item("Quit macshot", #selector(quit), key: "q"))
-        statusItem.menu = menu
+        galleryModel.onCatchLatest   = { [weak self] in self?.closePanel(); self?.testLatest() }
+        galleryModel.onOpenFolder    = { [weak self] in self?.closePanel(); self?.openFolder() }
+        galleryModel.onToggleMacshot = { [weak self] in self?.toggleThumbnail() }
+        galleryModel.onQuit          = { NSApp.terminate(nil) }
+        galleryModel.onUnpin         = { [weak self] url in self?.pins.unpin(url); self?.refreshGallery() }
+        galleryModel.onOpenPin       = { url in NSWorkspace.shared.open(url) }
     }
 
-    private func header(_ title: String) -> NSMenuItem {
-        let i = NSMenuItem(title: title, action: nil, keyEquivalent: "")
-        i.isEnabled = false
-        return i
+    // The menu-bar dropdown is a borderless panel pinned flush under the menu bar —
+    // no popover arrow, no gap. A normal menu-bar app, not a floating bubble.
+    @objc private func togglePanel() {
+        if galleryPanel != nil { closePanel(); return }
+        if Date().timeIntervalSince(lastAutoClose) < 0.25 { return }   // same click that just closed us
+        showPanel()
     }
 
-    private func item(_ title: String, _ action: Selector, key: String = "") -> NSMenuItem {
-        let i = NSMenuItem(title: title, action: action, keyEquivalent: key)
-        i.target = self
-        return i
+    private func showPanel() {
+        refreshGallery()
+        let hosting = NSHostingView(rootView: GalleryView(model: galleryModel))
+        hosting.layoutSubtreeIfNeeded()
+        var size = hosting.fittingSize
+        if size.width < 10 || size.height < 10 { size = NSSize(width: 300, height: 360) }
+
+        let panel = GalleryPanel(contentSize: size)
+        panel.contentView = hosting
+
+        if let button = statusItem.button, let win = button.window,
+           let screen = win.screen ?? NSScreen.main {
+            let btn = win.convertToScreen(button.convert(button.bounds, to: nil))
+            let margin: CGFloat = 8
+            var x = btn.midX - size.width / 2
+            x = min(max(x, screen.frame.minX + margin), screen.frame.maxX - size.width - margin)
+            let y = screen.visibleFrame.maxY - size.height        // top flush under the menu bar
+            panel.setFrame(NSRect(x: x, y: y, width: size.width, height: size.height), display: true)
+        }
+
+        panel.alphaValue = 0
+        galleryPanel = panel
+        NSApp.activate(ignoringOtherApps: true)
+        panel.makeKeyAndOrderFront(nil)
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.12
+            panel.animator().alphaValue = 1
+        }
+        NotificationCenter.default.addObserver(self, selector: #selector(panelResignedKey),
+                                               name: NSWindow.didResignKeyNotification, object: panel)
+    }
+
+    @objc private func panelResignedKey() { closePanel() }
+
+    private func closePanel() {
+        guard let panel = galleryPanel else { return }
+        NotificationCenter.default.removeObserver(self, name: NSWindow.didResignKeyNotification, object: panel)
+        panel.orderOut(nil)
+        galleryPanel = nil
+        lastAutoClose = Date()
+    }
+
+    private func refreshGallery() {
+        galleryModel.pins = pins.pins()
+        galleryModel.macshotEnabled = macshotEnabled
     }
 
     // MARK: actions
 
     private func present(_ url: URL) {
-        stack.add(OverlayController(fileURL: url, store: folders))
+        guard macshotEnabled else { return }   // user chose native screenshots — stay out of the way
+        stack.add(OverlayController(fileURL: url, store: folders, pins: pins))
     }
 
     @objc private func testLatest() {
@@ -108,21 +159,15 @@ final class AppController: NSObject, NSApplicationDelegate {
     @objc private func openFolder() { NSWorkspace.shared.open(watcher.directory) }
 
     @objc private func toggleThumbnail() {
-        setNativeThumbnail(enabled: !nativeThumbnailEnabled())
-        refreshToggle()
+        macshotEnabled.toggle()
+        UserDefaults.standard.set(macshotEnabled, forKey: "macshotEnabled")
+        setNativeThumbnail(enabled: !macshotEnabled)
+        galleryModel.macshotEnabled = macshotEnabled
     }
 
     @objc private func quit() { NSApp.terminate(nil) }
 
     // MARK: native thumbnail preference
-
-    private func nativeThumbnailEnabled() -> Bool {
-        // Unset defaults to true (macOS shows the thumbnail by default).
-        guard let v = CFPreferencesCopyAppValue(
-            "show-thumbnail" as CFString, "com.apple.screencapture" as CFString) as? NSNumber
-        else { return true }
-        return v.boolValue
-    }
 
     private func setNativeThumbnail(enabled: Bool) {
         // The screenshot agent re-reads this preference on the next capture, so a
@@ -133,9 +178,23 @@ final class AppController: NSObject, NSApplicationDelegate {
             "com.apple.screencapture" as CFString)
         CFPreferencesAppSynchronize("com.apple.screencapture" as CFString)
     }
+}
 
-    private func refreshToggle() {
-        // "on" = macshot is in control (native thumbnail disabled).
-        thumbnailToggle?.state = nativeThumbnailEnabled() ? .off : .on
+/// The menu-bar gallery dropdown: a transparent, borderless panel that sits flush
+/// under the menu bar (no popover arrow). The rounded glass comes from the SwiftUI
+/// content; the panel just hosts it and casts the shadow.
+final class GalleryPanel: NSPanel {
+    init(contentSize: NSSize) {
+        super.init(contentRect: NSRect(origin: .zero, size: contentSize),
+                   styleMask: [.borderless],
+                   backing: .buffered, defer: false)
+        isOpaque = false
+        backgroundColor = .clear
+        hasShadow = false
+        level = .statusBar
+        isMovableByWindowBackground = false
+        hidesOnDeactivate = false
+        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
     }
+    override var canBecomeKey: Bool { true }
 }
