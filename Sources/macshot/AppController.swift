@@ -9,6 +9,7 @@ final class AppController: NSObject, NSApplicationDelegate {
     private let stack = OverlayStack()
     private var galleryPanel: GalleryPanel?
     private var lastAutoClose = Date.distantPast
+    private weak var lastActiveApp: NSRunningApplication?   // the app you were in before the panel — the browser
     private let galleryModel = GalleryModel()
     private var macshotEnabled = true   // on = macshot panel shows + native thumbnail off
 
@@ -30,6 +31,24 @@ final class AppController: NSObject, NSApplicationDelegate {
         watcher.onNewScreenshot = { [weak self] url in self?.present(url) }
         watcher.start()
         checkDesktopAccess()
+
+        // Remember which app you were last in, so "Screenshot site" knows which browser to shoot.
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self, selector: #selector(appActivated(_:)),
+            name: NSWorkspace.didActivateApplicationNotification, object: nil)
+
+        if let i = CommandLine.arguments.firstIndex(of: "--siteshot-test") {   // exercise the real captureSite path
+            let s = (i + 1 < CommandLine.arguments.count) ? CommandLine.arguments[i + 1] : "https://example.com"
+            UserDefaults.standard.set(s, forKey: "macshotSiteURL")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+                NSLog("macshot: siteshot-test triggered"); self?.captureSite()
+            }
+        }
+    }
+
+    @objc private func appActivated(_ note: Notification) {
+        guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else { return }
+        if app.bundleIdentifier != Bundle.main.bundleIdentifier { lastActiveApp = app }
     }
 
     /// Read the screenshot folder once on launch. On macOS this triggers the
@@ -68,8 +87,9 @@ final class AppController: NSObject, NSApplicationDelegate {
             button.target = self
         }
 
-        galleryModel.onCatchLatest   = { [weak self] in self?.closePanel(); self?.testLatest() }
-        galleryModel.onOpenFolder    = { [weak self] in self?.closePanel(); self?.openFolder() }
+        galleryModel.onCatchLatest    = { [weak self] in self?.closePanel(); self?.testLatest() }
+        galleryModel.onScreenshotSite = { [weak self] in self?.captureSite() }
+        galleryModel.onOpenFolder     = { [weak self] in self?.closePanel(); self?.openFolder() }
         galleryModel.onToggleMacshot = { [weak self] in self?.toggleThumbnail() }
         galleryModel.onQuit          = { NSApp.terminate(nil) }
         galleryModel.onUnpin         = { [weak self] url in self?.pins.unpin(url); self?.refreshGallery() }
@@ -157,6 +177,68 @@ final class AppController: NSObject, NSApplicationDelegate {
     }
 
     @objc private func openFolder() { NSWorkspace.shared.open(watcher.directory) }
+
+    // MARK: screenshot a website — captures EXACTLY what you see: the VISIBLE page region
+    // (no chrome, no full-page extension) of the browser you're in, with your live session.
+    // Needs ONLY Screen Recording (capturing screen pixels is impossible without it on macOS).
+    // Accessibility is NOT required — the page region comes from permission-free window
+    // metadata (or the AX web-area only if you happen to have already granted Accessibility).
+    // The one Screen Recording grant is permanent thanks to the stable signature.
+
+    private func captureSite() {
+        closePanel()
+        guard CGPreflightScreenCaptureAccess() else {
+            CGRequestScreenCaptureAccess()
+            screenRecordingAlert()
+            return
+        }
+        let app = (lastActiveApp.flatMap { WebCapture.browserIDs.contains($0.bundleIdentifier ?? "") ? $0 : nil })
+                  ?? WebCapture.frontmostBrowser()
+        guard let browser = app else { noWebAreaAlert(); return }
+        browser.activate(options: [])
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+            guard let self, let frame = WebCapture.viewportFrame(of: browser) else { self?.noWebAreaAlert(); return }
+            self.captureRegion(frame)
+        }
+    }
+
+    private func captureRegion(_ rect: CGRect) {
+        let stamp = DateFormatter(); stamp.dateFormat = "yyyy-MM-dd 'at' h.mm.ss a"
+        let dest = watcher.directory.appendingPathComponent("Screenshot Site \(stamp.string(from: Date())).png")
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+        p.arguments = ["-x", "-R\(Int(rect.minX)),\(Int(rect.minY)),\(Int(rect.width)),\(Int(rect.height))", dest.path]
+        do { try p.run() } catch { NSLog("macshot: site capture failed — \(error.localizedDescription)") }
+    }
+
+    private func screenRecordingAlert() {
+        let alert = NSAlert()
+        alert.messageText = "One-time setup: Screen Recording"
+        alert.informativeText = "To capture exactly what you see, macshot needs Screen Recording — there's no way to screenshot your screen without it.\n\n1. Click Open Settings and turn ON macshot under Screen Recording.\n2. Come back here and click Relaunch macshot.\n\nThanks to a stable signature you only do this once — it won't reset on updates."
+        alert.addButton(withTitle: "Open Settings")
+        alert.addButton(withTitle: "Relaunch macshot")
+        alert.addButton(withTitle: "Later")
+        NSApp.activate(ignoringOtherApps: true)
+        switch alert.runModal() {
+        case .alertFirstButtonReturn:
+            if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
+                NSWorkspace.shared.open(url)
+            }
+        case .alertSecondButtonReturn:
+            let t = Process(); t.executableURL = URL(fileURLWithPath: "/bin/launchctl")
+            t.arguments = ["kickstart", "-k", "gui/\(getuid())/com.macshot.agent"]; try? t.run()
+        default: break
+        }
+    }
+
+    private func noWebAreaAlert() {
+        let alert = NSAlert()
+        alert.messageText = "No web page found"
+        alert.informativeText = "Open your page in a browser (Safari, Chrome, Arc, Edge…), then click “Screenshot site”."
+        alert.addButton(withTitle: "OK")
+        NSApp.activate(ignoringOtherApps: true)
+        alert.runModal()
+    }
 
     @objc private func toggleThumbnail() {
         macshotEnabled.toggle()
