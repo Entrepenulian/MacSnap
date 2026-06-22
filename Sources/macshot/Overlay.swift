@@ -14,8 +14,8 @@ final class OverlayPanel: NSPanel {
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
         backgroundColor = .clear
         isOpaque = false
-        hasShadow = false                 // SwiftUI draws the card's own shadow
-        isMovableByWindowBackground = false   // dragging the card drags the file out, not the window
+        hasShadow = false                 // SwiftUI draws each card's own shadow
+        isMovableByWindowBackground = false   // dragging a card drags the file out, not the window
         hidesOnDeactivate = false
         animationBehavior = .utilityWindow
     }
@@ -24,19 +24,120 @@ final class OverlayPanel: NSPanel {
     override var canBecomeMain: Bool { false }
 }
 
-/// Owns one screenshot's lifecycle: builds the model, shows the panel,
-/// and performs the real copy / move / markup / share actions.
-final class OverlayController: NSObject, NSWindowDelegate {
-    var onClosed: (() -> Void)?      // panel finished closing → stack removes + reflows
-    var onResized: (() -> Void)?     // panel changed height → stack re-lays-out
-    var onShown: (() -> Void)?       // panel first became visible (for latency measurement)
+/// The live corner stack's data: the ordered screenshot cards (oldest → newest) and
+/// the height of the visible viewport. `StackView` renders it; `OverlayStack` mutates it.
+final class StackModel: ObservableObject {
+    @Published var cards: [ShotModel] = []
+    @Published var scrollTarget: UUID?          // card to scroll into view (newest, or an opened picker)
 
-    private let fileURL: URL
+    let maxVisible = 3                           // at most 3 previews on screen; the rest scroll
+    let gap: CGFloat = 12
+    var screenCap: CGFloat = 800
+
+    /// Visible viewport height: the newest `maxVisible` cards, or a focused picker.
+    var viewportHeight: CGFloat {
+        guard !cards.isEmpty else { return 0 }
+        if let picker = cards.first(where: { $0.mode == .picker }) {
+            return min(picker.currentHeight, screenCap)
+        }
+        let visible = cards.prefix(maxVisible)        // newest are at the front (top)
+        let h = visible.map(\.cardHeight).reduce(0, +) + CGFloat(max(0, visible.count - 1)) * gap
+        return min(h, screenCap)
+    }
+}
+
+/// The scrollable corner stack. Newest sits on top (just like before); older previews
+/// stack below and scroll into view. Capped to show `maxVisible` at once — nothing is
+/// ever dropped, only scrolled out of sight. No scroll bar; the top/bottom soft-fade only
+/// on the side that has hidden content; the whole panel (gaps included) owns the scroll.
+struct StackView: View {
+    @ObservedObject var model: StackModel
+    @State private var atTop = true
+    @State private var atBottom = true
+
+    var body: some View {
+        ScrollViewReader { proxy in
+            ScrollView(.vertical) {
+                VStack(spacing: model.gap) {
+                    ForEach(model.cards) { card in
+                        ShotView(model: card)
+                            .id(card.id)
+                    }
+                }
+                .frame(width: ShotView.width)
+                .padding(.vertical, 1)
+                // A near-invisible fill so every pixel of the stack (cards AND the gaps
+                // between them) belongs to the panel and scrolls it — never the page behind.
+                .background(Color.black.opacity(0.02))
+            }
+            .frame(width: ShotView.width, height: model.viewportHeight)
+            .defaultScrollAnchor(.top)                  // pin to newest (top); older scroll down
+            .scrollIndicators(.hidden)                  // no scroll bar, ever
+            .scrollDisabled(model.cards.count <= model.maxVisible)   // no scroll until there's overflow
+            .mask(edgeFade)                             // soft fade where content is hidden
+            .modifier(ScrollEdgeTracker(atTop: $atTop, atBottom: $atBottom))
+            .animation(.easeOut(duration: 0.22), value: atTop)
+            .animation(.easeOut(duration: 0.22), value: atBottom)
+            .onChange(of: model.scrollTarget) { _, target in
+                guard let target else { return }
+                withAnimation(.timingCurve(0.22, 1, 0.36, 1, duration: 0.34)) {
+                    proxy.scrollTo(target, anchor: .top)
+                }
+            }
+        }
+    }
+
+    /// Fades only the edges with off-screen content — and ONLY when there are more than
+    /// `maxVisible` previews (so 3 or fewer keep crisp edges, no fade at all).
+    private var edgeFade: some View {
+        let scrollable = model.cards.count > model.maxVisible
+        let f = min(0.42, 26 / max(model.viewportHeight, 1))
+        let top: CGFloat = (scrollable && !atTop) ? f : 0
+        let bot: CGFloat = (scrollable && !atBottom) ? f : 0
+        return LinearGradient(stops: [
+            .init(color: .clear, location: 0),
+            .init(color: .black, location: top),
+            .init(color: .black, location: 1 - bot),
+            .init(color: .clear, location: 1),
+        ], startPoint: .top, endPoint: .bottom)
+    }
+}
+
+/// Tracks whether the scroll is at the very top / bottom so the edge fade only shows on
+/// the side that has hidden content. `onScrollGeometryChange` needs macOS 15+; older
+/// systems just skip the directional tracking (the stack still scrolls fine).
+private struct ScrollEdgeTracker: ViewModifier {
+    @Binding var atTop: Bool
+    @Binding var atBottom: Bool
+    private struct Edges: Equatable { let top: Bool; let bottom: Bool }
+
+    func body(content: Content) -> some View {
+        if #available(macOS 15.0, *) {
+            content.onScrollGeometryChange(for: Edges.self) { geo in
+                Edges(top: geo.contentOffset.y <= 0.5,
+                      bottom: geo.contentOffset.y >= geo.contentSize.height - geo.containerSize.height - 0.5)
+            } action: { _, e in atTop = e.top; atBottom = e.bottom }
+        } else {
+            content
+        }
+    }
+}
+
+/// Owns one screenshot's lifecycle: builds the model and performs the real
+/// copy / move / markup / share / pin actions. The shared `OverlayStack` panel
+/// renders the card — this no longer owns a window of its own.
+final class OverlayController: NSObject {
+    var onClosed: (() -> Void)?      // exit animation finished → stack removes the card + reflows
+    var onShown: (() -> Void)?       // card became visible (latency measurement)
+    var onModeChange: (() -> Void)?  // picker opened/closed → stack re-sizes + scrolls
+
+    var hostAnchor: () -> NSView? = { nil }   // share sheet anchors to the stack panel
+    var makeHostKey: () -> Void = {}          // picker search field needs the panel key
+
+    let fileURL: URL
+    let model: ShotModel
     private let store: FolderStore
     private let pins: PinStore
-    private let model: ShotModel
-    private var panel: OverlayPanel!
-    private var hosting: NSHostingController<ShotView>!
     private var autoDismiss: DispatchWorkItem?
     private var closed = false
     private var pinnedURL: URL?      // the copy in the pin store, if pinned
@@ -62,81 +163,48 @@ final class OverlayController: NSObject, NSWindowDelegate {
         model.onMarkup = { [weak self] in self?.markup() }
         model.onShare = { [weak self] in self?.share() }
         model.onEngaged = { [weak self] in self?.cancelAutoDismiss() }
-        model.onNeedsKey = { [weak self] in self?.panel.makeKeyAndOrderFront(nil) }
+        model.onNeedsKey = { [weak self] in self?.makeHostKey() }
+        model.onModeChange = { [weak self] in self?.onModeChange?() }
         model.onSave = { [weak self] folder, name in self?.save(folder, name: name) }
         model.onCreate = { [weak self] name in self?.create(name) }
         model.onPin = { [weak self] in self?.pinAndSlideAway() }
     }
 
-    /// Pin keeps a copy in the pin store (shown in the menu-bar gallery), then the
-    /// preview slides away to the right and the rest of the stack reflows.
+    /// The stack calls this once the card is on screen: starts the idle timer, signals shown.
+    func didPresent() {
+        scheduleAutoDismiss()
+        onShown?()
+    }
+
+    // MARK: lifecycle — each ends by playing the card's exit animation, then onClosed
+
+    func close() { finish(after: 0.18) { self.model.closing = true } }                 // soft fade
+
+    /// Pin keeps a copy in the pin store (menu-bar gallery), then the preview slides away.
     private func pinAndSlideAway() {
         guard !closed else { return }
         pinnedURL = pins.pin(fileURL)
         model.pinned = (pinnedURL != nil)
-        closed = true
-        cancelAutoDismiss()
-        model.pinning = true             // ShotView slides the preview away (transitions-dev, 0.34s)
-        let p = panel
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.34) { [weak self] in
-            p?.orderOut(nil)
-            self?.onClosed?()
-        }
+        finish(after: 0.34) { self.model.pinning = true }                              // slide off right
     }
 
-    // MARK: presentation (the OverlayStack positions us in the corner)
-
-    var panelSize: NSSize { panel?.frame.size ?? NSSize(width: ShotView.width, height: 250) }
-
-    func setOrigin(_ origin: NSPoint) {
-        guard let panel else { return }
-        if panel.alphaValue > 0.01 {
-            // animator().setFrame is the animatable path for NSWindow (setFrameOrigin isn't).
-            panel.animator().setFrame(NSRect(origin: origin, size: panel.frame.size), display: true)
-        } else {
-            panel.setFrameOrigin(origin)        // not shown yet → place instantly
-        }
+    /// Delete outright (move to Trash), then dissolve the card away.
+    private func delete() {
+        guard !closed else { return }
+        do { try FileManager.default.trashItem(at: fileURL, resultingItemURL: nil) }
+        catch { NSLog("macshot: delete failed — \(error.localizedDescription)") }
+        finish(after: 0.30) { self.model.deleting = true }                             // blur + shrink + sink
     }
 
-    /// Build the panel invisibly. Its SwiftUI size resolves asynchronously, so we
-    /// fade it in only once it has a real height and the stack has positioned it.
-    func build() {
-        hosting = NSHostingController(rootView: ShotView(model: model))
-        hosting.sizingOptions = [.preferredContentSize]
-        panel = OverlayPanel(contentRect: NSRect(x: 0, y: 0, width: ShotView.width, height: 250))
-        panel.delegate = self
-        panel.alphaValue = 0
-        panel.contentViewController = hosting
-    }
+    private func markup() { NSWorkspace.shared.open(fileURL); close() }
 
-    func present() {
-        panel.orderFrontRegardless()
-        scheduleAutoDismiss()
-    }
-
-    func windowDidResize(_ notification: Notification) {
-        onResized?()
-        if let panel, panel.frame.height > 1, panel.alphaValue < 0.01 {
-            panel.alphaValue = 1     // snap visible the moment it's sized; SwiftUI does a quick fade
-            onShown?()
-        }
-    }
-
-    func close() {
+    /// Play the card's exit animation in place, then let the stack remove + reflow.
+    private func finish(after delay: TimeInterval, _ animate: @escaping () -> Void) {
         guard !closed else { return }
         closed = true
         cancelAutoDismiss()
-        let p = panel
-        // 1. Fade this panel fully away (transitions-dev modal-close: ~0.18s, decelerate ease).
-        NSAnimationContext.runAnimationGroup({ ctx in
-            ctx.duration = 0.18
-            ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.22, 1, 0.36, 1)
-            p?.animator().alphaValue = 0
-        }, completionHandler: { [weak self] in
-            p?.orderOut(nil)
-            // 2. Only once it's gone, let the others slide down to fill the gap.
-            self?.onClosed?()
-        })
+        animate()
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in self?.onClosed?() }
     }
 
     private func scheduleAutoDismiss() {
@@ -157,39 +225,10 @@ final class OverlayController: NSObject, NSWindowDelegate {
         model.flashCopied()
     }
 
-    private func markup() {
-        NSWorkspace.shared.open(fileURL)
-        close()
-    }
-
-    /// Delete the screenshot outright (move it to the Trash) so it isn't kept anywhere.
-    private func delete() {
-        do { try FileManager.default.trashItem(at: fileURL, resultingItemURL: nil) }
-        catch { NSLog("macshot: delete failed — \(error.localizedDescription)") }
-        dissolveAndClose()
-    }
-
-    /// The card dissolves (blur + shrink + sink + fade), then the rest of the stack reflows.
-    private func dissolveAndClose() {
-        guard !closed else { return }
-        closed = true
-        cancelAutoDismiss()
-        model.deleting = true            // ShotView animates the dissolve (0.30s)
-        let p = panel
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.30) { [weak self] in
-            p?.orderOut(nil)
-            self?.onClosed?()
-        }
-    }
-
-    /// Verification hooks: fire the exact closures the buttons fire.
-    func testInvokeDelete() { model.onDelete() }
-    func testInvokePin() { model.onPin() }
-
     private func share() {
-        guard let view = panel.contentView else { return }
+        guard let view = hostAnchor() else { return }
         let picker = NSSharingServicePicker(items: [fileURL])
-        picker.show(relativeTo: view.bounds, of: view, preferredEdge: .minY)
+        picker.show(relativeTo: view.bounds, of: view, preferredEdge: .minX)
     }
 
     private func save(_ folder: Folder, name: String) {
@@ -201,6 +240,16 @@ final class OverlayController: NSObject, NSWindowDelegate {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.95) { [weak self] in self?.close() }
         } catch {
             NSLog("macshot: save failed — \(error.localizedDescription)")
+            presentFileError()
+        }
+    }
+
+    private func create(_ name: String) {
+        do {
+            let url = try store.createFolder(named: name)
+            save(Folder(id: url.path, name: name, url: url, count: 0), name: model.baseName)
+        } catch {
+            NSLog("macshot: create folder failed — \(error.localizedDescription)")
             presentFileError()
         }
     }
@@ -218,66 +267,93 @@ final class OverlayController: NSObject, NSWindowDelegate {
         }
     }
 
-    private func create(_ name: String) {
-        do {
-            let url = try store.createFolder(named: name)
-            save(Folder(id: url.path, name: name, url: url, count: 0), name: model.baseName)
-        } catch {
-            NSLog("macshot: create folder failed — \(error.localizedDescription)")
-            presentFileError()
-        }
-    }
+    /// Verification hooks: fire the exact closures the buttons fire.
+    func testInvokeDelete() { model.onDelete() }
+    func testInvokePin() { model.onPin() }
 }
 
-/// Stacks screenshot panels in the bottom-right corner: oldest sits in the corner,
-/// each new one appears above the previous with a gap. Panels reflow (slide down)
-/// when one is filed or dismissed, and shift up when one grows into the picker.
+/// Hosts every live screenshot card in ONE scrollable panel anchored in the bottom-right
+/// corner. Adding a card slides it in at the bottom; filing / pinning / deleting plays the
+/// card's exit and the rest reflow. Only `maxVisible` show at once — older ones scroll.
 final class OverlayStack {
     private var controllers: [OverlayController] = []
+    private let stackModel = StackModel()
+    private var panel: OverlayPanel!
+    private var hosting: NSHostingController<StackView>!
     private let margin: CGFloat = 16     // gap from screen edges
-    private let gap: CGFloat = 12        // gap between stacked panels
+
+    init() { build() }
+
+    private func build() {
+        hosting = NSHostingController(rootView: StackView(model: stackModel))
+        hosting.sizingOptions = []                    // the stack drives the panel frame, not SwiftUI
+        panel = OverlayPanel(contentRect: NSRect(x: 0, y: 0, width: ShotView.width, height: 1))
+        panel.contentViewController = hosting
+        panel.alphaValue = 0
+    }
 
     func add(_ c: OverlayController) {
-        controllers.append(c)            // newest on top
-        c.onClosed  = { [weak self, weak c] in if let c { self?.remove(c) } }
-        c.onResized = { [weak self] in self?.layout() }   // fires when its size resolves → positions it
-        c.build()
-        enforceCap()
-        c.present()
+        controllers.append(c)
+        c.onClosed = { [weak self, weak c] in if let c { self?.remove(c) } }
+        c.onModeChange = { [weak self] in        // picker opened/closed: resize + scroll next runloop
+            DispatchQueue.main.async {
+                withAnimation(.timingCurve(0.22, 1, 0.36, 1, duration: 0.32)) {
+                    self?.stackModel.objectWillChange.send()   // mode changed → recompute height (animated)
+                }
+                self?.relayout(animated: true); self?.scrollToFocus()
+            }
+        }
+        c.hostAnchor = { [weak self] in self?.panel.contentView }
+        c.makeHostKey = { [weak self] in self?.panel.makeKeyAndOrderFront(nil) }
+
+        stackModel.cards.insert(c.model, at: 0)   // newest on top — INSTANT so existing cards never budge
+        let firstShow = panel.alphaValue < 0.01
+        relayout(animated: false)                 // instant resize; only the new card animates itself in
+        panel.orderFrontRegardless()
+        if firstShow { panel.alphaValue = 1 }
+
+        // No manual scroll — defaultScrollAnchor(.top) keeps the new (top) card in view, so
+        // the preview just appears without a self-scroll jitter. Just mark it shown.
+        DispatchQueue.main.async { [weak c] in c?.didPresent() }
     }
 
     private func remove(_ c: OverlayController) {
         guard controllers.contains(where: { $0 === c }) else { return }
         controllers.removeAll { $0 === c }
-        layout()
+        withAnimation(.timingCurve(0.22, 1, 0.36, 1, duration: 0.34)) {
+            stackModel.cards.removeAll { $0.id == c.model.id }
+        }
+        relayout()
+        if stackModel.cards.isEmpty {
+            NSAnimationContext.runAnimationGroup({ ctx in
+                ctx.duration = 0.2
+                panel.animator().alphaValue = 0
+            }, completionHandler: { [weak self] in self?.panel.orderOut(nil) })
+        }
     }
 
-    /// Keep the stack from marching off the top of the screen.
-    private func enforceCap() {
-        guard let screen = NSScreen.main else { return }
-        let maxCount = max(2, Int((screen.visibleFrame.height - margin) / 262))
-        var removed = false
-        while controllers.count > maxCount {
-            controllers.removeFirst().close()   // file stays on the Desktop; just stops showing
-            removed = true
+    private func scrollToFocus() {
+        if let picker = stackModel.cards.first(where: { $0.mode == .picker }) {
+            stackModel.scrollTarget = picker.id
         }
-        if removed { layout() }
     }
 
-    private func layout() {
-        guard let screen = NSScreen.main else { return }
-        let v = screen.frame          // true screen corner (below the Dock), like the native thumbnail
-        var y = v.minY + margin
-        var placements: [(OverlayController, NSPoint)] = []
-        for c in controllers {           // oldest → bottom, newest → top
-            let s = c.panelSize
-            placements.append((c, NSPoint(x: v.maxX - s.width - margin, y: y)))
-            y += s.height + gap
-        }
-        NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = 0.30                                                          // transitions-dev --resize-dur
-            ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.22, 1, 0.36, 1)  // --resize-ease
-            for (c, p) in placements { c.setOrigin(p) }
+    /// Size the panel to the visible viewport and keep it anchored in the bottom-right corner.
+    private func relayout(animated: Bool = true) {
+        guard let screen = NSScreen.main, let panel else { return }
+        stackModel.screenCap = screen.frame.height - 2 * margin
+        let h = max(1, stackModel.viewportHeight)
+        let frame = NSRect(x: screen.frame.maxX - ShotView.width - margin,
+                           y: screen.frame.minY + margin,
+                           width: ShotView.width, height: h)
+        if animated && panel.isVisible && panel.alphaValue > 0.01 {
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = 0.30                                                          // --resize-dur
+                ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.22, 1, 0.36, 1)  // --resize-ease
+                panel.animator().setFrame(frame, display: true)
+            }
+        } else {
+            panel.setFrame(frame, display: true)
         }
     }
 }

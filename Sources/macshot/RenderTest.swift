@@ -25,8 +25,8 @@ enum RenderTest {
         write(ShotView(model: hover).padding(24).background(desk), outBase, "-hover")
 
         let recents = [
-            Folder(id: "r1", name: "Design", url: URL(fileURLWithPath: "/"), count: 0),
-            Folder(id: "r2", name: "Receipts", url: URL(fileURLWithPath: "/"), count: 0),
+            Folder(id: "r1", name: "Creyya Screenshots", url: URL(fileURLWithPath: "/"), count: 0),   // long → truncates
+            Folder(id: "r2", name: "Design", url: URL(fileURLWithPath: "/"), count: 0),
             Folder(id: "r3", name: "Invoices", url: URL(fileURLWithPath: "/"), count: 0),
         ]
         let quick = ShotModel(image: img, fileName: "Screenshot", ext: "png", folders: folders, recentFolders: recents)

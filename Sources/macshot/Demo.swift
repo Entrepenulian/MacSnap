@@ -16,6 +16,8 @@ final class DemoController: NSObject, NSApplicationDelegate {
         CommandLine.arguments.contains("quicksave") ? "quicksave" :
         CommandLine.arguments.contains("gallery") ? "gallery" :
         CommandLine.arguments.contains("reflow") ? "reflow" :
+        CommandLine.arguments.contains("insert") ? "insert" :
+        CommandLine.arguments.contains("scroll") ? "scroll" :
         CommandLine.arguments.contains("stack") ? "stack" :
         CommandLine.arguments.contains("picker") ? "picker" : "hover"
 
@@ -24,7 +26,10 @@ final class DemoController: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         if mode == "gallery" { showGallery(); return }
-        if mode == "stack" || mode == "reflow" { showStack(reflow: mode == "reflow"); return }
+        if mode == "stack" || mode == "reflow" || mode == "scroll" {
+            showStack(count: mode == "scroll" ? 5 : mode == "reflow" ? 2 : 3, reflow: mode == "reflow"); return
+        }
+        if mode == "insert" { showInsert(); return }
 
         RenderEnv.forceReveal = true
         let folders: [Folder] = mode == "picker"
@@ -63,13 +68,12 @@ final class DemoController: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func showStack(reflow: Bool) {
+    private func showStack(count: Int, reflow: Bool) {
         let store = FolderStore()
         let stack = OverlayStack()
         self.stack = stack
-        let count = reflow ? 2 : 3
         for i in 0..<count {
-            let (w, h, c) = shots[i]
+            let (w, h, c) = shots[i % shots.count]
             let url = URL(fileURLWithPath: "/tmp/macshot-demo-\(i).png")
             writePNG(shotImage(w, h, c), to: url)
             let controller = OverlayController(fileURL: url, store: store)
@@ -83,6 +87,45 @@ final class DemoController: NSObject, NSApplicationDelegate {
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.3) { Self.printStackRect() }
         } else {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) { Self.printStackRect() }
+        }
+    }
+
+    /// Adds 3 cards, settles, then inserts a 4th and self-captures DURING its animation —
+    /// so a mid-flight frame (card partway in, others mid-shift) proves it shifts, not snaps.
+    private func showInsert() {
+        let store = FolderStore()
+        let stack = OverlayStack()
+        self.stack = stack
+        for i in 0..<3 {
+            let (w, h, c) = shots[i % shots.count]
+            let url = URL(fileURLWithPath: "/tmp/macshot-demo-\(i).png")
+            writePNG(shotImage(w, h, c), to: url)
+            let controller = OverlayController(fileURL: url, store: store)
+            controllers.append(controller)
+            stack.add(controller)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) { [weak self] in
+            guard let self else { return }
+            let (w, h, c) = self.shots[2]                 // a distinct (tall) 4th card
+            let url = URL(fileURLWithPath: "/tmp/macshot-demo-3.png")
+            self.writePNG(self.shotImage(w, h, c), to: url)
+            let controller = OverlayController(fileURL: url, store: store)
+            self.controllers.append(controller)
+            stack.add(controller)
+            self.capture(after: 0.07, "/tmp/insert_mid.png")   // mid-animation
+            self.capture(after: 0.60, "/tmp/insert_end.png")   // settled
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { print("INSERT_DONE"); fflush(stdout) }
+        }
+    }
+
+    private func capture(after delay: TimeInterval, _ path: String) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+            guard let screen = NSScreen.main else { return }
+            let full = screen.frame
+            let w: CGFloat = 440, h = min(900, full.height - 10)
+            let rect = "\(Int(full.width - w)),\(Int(max(0, full.height - h))),\(Int(w)),\(Int(h))"
+            let p = Process(); p.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+            p.arguments = ["-x", "-R\(rect)", path]; try? p.run(); p.waitUntilExit()
         }
     }
 
