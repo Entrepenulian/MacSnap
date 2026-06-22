@@ -23,9 +23,10 @@ enum Theme {
 }
 
 // ── model ───────────────────────────────────────────────────────────────────
-final class ShotModel: ObservableObject {
+final class ShotModel: ObservableObject, Identifiable {
     enum Mode { case revealed, quickSave, picker, saved }
 
+    let id = UUID()
     let image: NSImage
     let fileURL: URL
     @Published var baseName: String
@@ -42,7 +43,9 @@ final class ShotModel: ObservableObject {
     @Published var pinned = false
     @Published var deleting = false   // drives the dissolve-out when trashed
     @Published var pinning = false    // drives the slide-away when pinned
+    @Published var closing = false    // drives a soft fade-out (auto-dismiss / after save)
 
+    var onModeChange: () -> Void = {} // stack re-lays-out + scrolls when the picker opens/closes
     var onCopy: () -> Void = {}
     var onDelete: () -> Void = {}
     var onMarkup: () -> Void = {}
@@ -80,6 +83,11 @@ final class ShotModel: ObservableObject {
     }
     var metaText: String { "\(ext.uppercased())  ·  \(dimsText)" }
 
+    // Rendered card height — drives the scrollable corner stack's sizing.
+    var cardHeight: CGFloat { ShotView.cardHeight(for: image) }
+    var pickerHeight: CGFloat { 138 + min(CGFloat(max(rowCount, 1)) * 40 + 4, 248) }
+    var currentHeight: CGFloat { mode == .picker ? pickerHeight : cardHeight }
+
     var searchTrimmed: String { search.trimmingCharacters(in: .whitespacesAndNewlines) }
     var filtered: [Folder] {
         let q = searchTrimmed.lowercased()
@@ -94,9 +102,9 @@ final class ShotModel: ObservableObject {
         return selection < f.count ? f[selection] : nil   // nil = the "Create …" row
     }
 
-    func enterQuickSave() { mode = .quickSave; onEngaged() }
-    func enterPicker() { mode = .picker; onEngaged() }
-    func backToShot() { mode = .revealed; search = ""; selection = 0 }
+    func enterQuickSave() { mode = .quickSave; onEngaged(); onModeChange() }
+    func enterPicker() { mode = .picker; onEngaged(); onModeChange() }
+    func backToShot() { mode = .revealed; search = ""; selection = 0; onModeChange() }
     func engage() { onEngaged() }
     func moveSelection(_ d: Int) {
         guard rowCount > 0 else { return }
@@ -112,7 +120,7 @@ final class ShotModel: ObservableObject {
         copied = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) { [weak self] in self?.copied = false }
     }
-    func showSaved(_ label: String) { savedLabel = label; mode = .saved }
+    func showSaved(_ label: String) { savedLabel = label; mode = .saved; onModeChange() }
 }
 
 // ── view ────────────────────────────────────────────────────────────────────
@@ -130,11 +138,12 @@ struct ShotView: View {
     // tall shot doesn't make a giant panel (and a very wide one doesn't get too thin).
     static let minImageH: CGFloat = 120
     static let maxImageH: CGFloat = 300
-    private var imageH: CGFloat {
-        let s = model.image.size
+    static func cardHeight(for image: NSImage) -> CGFloat {
+        let s = image.size
         guard s.width > 0, s.height > 0 else { return 216 }
-        return min(max(W * (s.height / s.width), Self.minImageH), Self.maxImageH)
+        return min(max(width * (s.height / s.width), minImageH), maxImageH)
     }
+    private var imageH: CGFloat { Self.cardHeight(for: model.image) }
 
     // Fit the list to its rows (no big empty area), capped so it can scroll if long.
     private var listHeight: CGFloat { min(CGFloat(max(model.rowCount, 1)) * 40 + 4, 248) }
@@ -156,13 +165,16 @@ struct ShotView: View {
         .scaleEffect(model.deleting ? 0.95 : 1, anchor: .center)
         .blur(radius: model.deleting ? 17 : 0)
         .brightness(model.deleting ? -0.06 : 0)
-        .offset(x: model.pinning ? 84 : 0, y: model.deleting ? 6 : 0)   // pin → slide off to the right
-        .opacity((model.deleting || model.pinning) ? 0 : (appeared ? 1 : 0))
-        .onAppear { withAnimation(.easeOut(duration: 0.12)) { appeared = true } }
+        // pin → slide off right; a brand-new card eases DOWN into its own slot (a self-contained
+        // entrance that never disturbs the cards already on screen).
+        .offset(x: model.pinning ? 84 : 0, y: (model.deleting ? 6 : 0) + (appeared ? 0 : -10))
+        .opacity((model.deleting || model.pinning || model.closing) ? 0 : (appeared ? 1 : 0))
+        .onAppear { withAnimation(.timingCurve(0.22, 1, 0.36, 1, duration: 0.32)) { appeared = true } }
         .animation(.timingCurve(0.22, 1, 0.36, 1, duration: 0.34), value: model.mode)   // transitions-dev resize ease
         .animation(.easeOut(duration: 0.16), value: model.hovering)
         .animation(.easeOut(duration: 0.30), value: model.deleting)
         .animation(.timingCurve(0.22, 1, 0.36, 1, duration: 0.34), value: model.pinning) // transitions-dev slide-away
+        .animation(.easeOut(duration: 0.18), value: model.closing)
         .onHover { h in model.hovering = h; if h { model.engage() } }
     }
 
@@ -243,9 +255,13 @@ struct ShotView: View {
 
     private var quickSaveCluster: some View {
         VStack(spacing: 10) {
-            ForEach(model.quickFolders) { folder in
-                pill("folder", folder.isRoot ? "Desktop" : shortName(folder.name), primary: false) {
-                    model.onSave(folder, model.baseName)
+            // Folder targets sit side by side, sharing the width equally; long names
+            // truncate with an ellipsis instead of stretching the pill.
+            HStack(spacing: 8) {
+                ForEach(model.quickFolders) { folder in
+                    pill("folder", folder.isRoot ? "Desktop" : folder.name, primary: false, fill: true) {
+                        model.onSave(folder, model.baseName)
+                    }
                 }
             }
             HStack(spacing: 12) {
@@ -255,8 +271,6 @@ struct ShotView: View {
             .padding(.top, 3)
         }
     }
-
-    private func shortName(_ s: String) -> String { s.count > 22 ? String(s.prefix(21)) + "…" : s }
 
     private var savedOverlay: some View {
         VStack(spacing: 10) {
@@ -397,8 +411,8 @@ struct ShotView: View {
     private func corner(_ symbol: String, offset: CGFloat, action: @escaping () -> Void) -> some View {
         CircleButton(symbol: symbol, iconOffsetY: offset, action: action)
     }
-    private func pill(_ symbol: String, _ label: String, primary: Bool, action: @escaping () -> Void) -> some View {
-        PillButton(symbol: symbol, label: label, primary: primary, action: action)
+    private func pill(_ symbol: String, _ label: String, primary: Bool, fill: Bool = false, action: @escaping () -> Void) -> some View {
+        PillButton(symbol: symbol, label: label, primary: primary, fill: fill, action: action)
     }
 }
 
@@ -440,19 +454,23 @@ struct PillButton: View {
     let symbol: String
     let label: String
     let primary: Bool
+    var fill: Bool = false          // fill an equal share of the row + truncate (quick-save targets)
     let action: () -> Void
     @State private var hover = false
     @State private var press = false
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 8) {
+            HStack(spacing: 7) {
                 Image(systemName: symbol).font(.system(size: 14, weight: .semibold))
-                Text(label).font(.system(size: 14.5, weight: .semibold)).lineLimit(1).truncationMode(.middle)
+                Text(label).font(.system(size: 14.5, weight: .semibold))
+                    .lineLimit(1).truncationMode(fill ? .tail : .middle)
             }
             .foregroundStyle(primary ? Theme.primaryInk : Theme.ink1)
-            .frame(minWidth: 132).frame(height: 44)
-            .fixedSize(horizontal: true, vertical: false)
+            .padding(.horizontal, fill ? 14 : 0)
+            .frame(minWidth: fill ? nil : 132, maxWidth: fill ? .infinity : nil)
+            .frame(height: 44)
+            .fixedSize(horizontal: !fill, vertical: false)
             .background(background)
             .clipShape(Capsule())
             .overlay(Capsule().strokeBorder(primary ? Color.clear : Theme.hairline, lineWidth: 1))
