@@ -6,6 +6,7 @@ final class GalleryModel: ObservableObject {
     @Published var macshotEnabled = true
 
     var onCatchLatest: () -> Void = {}
+    var onScreenshotSite: () -> Void = {}
     var onOpenFolder: () -> Void = {}
     var onToggleMacshot: () -> Void = {}
     var onQuit: () -> Void = {}
@@ -94,6 +95,7 @@ struct GalleryView: View {
             }
             .padding(.horizontal, 13).frame(height: 36)
 
+            ActionRow(icon: "macwindow", title: "Screenshot site", action: model.onScreenshotSite)
             ActionRow(icon: "clock.arrow.circlepath", title: "Catch latest screenshot", action: model.onCatchLatest)
             ActionRow(icon: "folder", title: "Open screenshot folder", action: model.onOpenFolder)
             ActionRow(icon: "power", title: "Quit macshot", action: model.onQuit)
