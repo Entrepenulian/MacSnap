@@ -4,7 +4,7 @@ import AppKit
 /// Support, so they survive even if you move or delete the original.
 final class PinStore {
     let dir: URL
-    private static let imageExts: Set<String> = ["png", "jpg", "jpeg", "gif", "tiff", "heic"]
+    static let imageExts: Set<String> = ["png", "jpg", "jpeg", "gif", "tiff", "heic"]
 
     init(root: URL? = nil) {
         let base = root ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)
