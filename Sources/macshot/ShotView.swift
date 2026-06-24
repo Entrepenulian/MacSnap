@@ -200,7 +200,7 @@ struct ShotView: View {
         // target. Let go on nothing and it just snaps back — the panel never moves.
         .onDrag({
             model.engage()
-            return NSItemProvider(contentsOf: model.fileURL) ?? NSItemProvider()
+            return fileDragProvider(for: model.fileURL)
         }, preview: {
             Image(nsImage: model.image)
                 .resizable().interpolation(.high)

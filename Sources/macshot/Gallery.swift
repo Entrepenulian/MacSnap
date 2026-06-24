@@ -223,7 +223,7 @@ struct PinThumb: View {
                     .strokeBorder(.white.opacity(hover ? 0.28 : 0.10), lineWidth: 1))   // image outline (pure white)
                 .contentShape(Rectangle())
                 .onTapGesture { onOpen() }
-                .onDrag { NSItemProvider(contentsOf: url) ?? NSItemProvider() }
+                .onDrag { fileDragProvider(for: url) }
                 // Right-click: copy the image to the clipboard (the headline action),
                 // plus open and unpin for parity with the hover controls.
                 .contextMenu {
@@ -254,6 +254,26 @@ struct PinThumb: View {
             DispatchQueue.main.async { self.image = img }
         }
     }
+}
+
+/// A drag payload every destination accepts as a real file — Finder, Mail, native apps,
+/// AND browser web drop zones (ChatGPT, Gmail) and other sandboxed apps.
+///
+/// `NSItemProvider(contentsOf:)` also registers `public.url` / `public.file-url`, which
+/// browsers map to the drag's `text/uri-list` — i.e. a *link* — so a web upload zone that
+/// only reads `dataTransfer.files` sees nothing and the drop silently fails. Registering a
+/// single *promised* file representation under the file's concrete type (e.g. `public.png`)
+/// makes the system hand real file bytes to the destination on drop, with no URL to
+/// misinterpret. The original file is read in place — never moved or deleted.
+func fileDragProvider(for url: URL) -> NSItemProvider {
+    let provider = NSItemProvider()
+    provider.suggestedName = url.lastPathComponent
+    let uti = (UTType(filenameExtension: url.pathExtension) ?? .image).identifier
+    provider.registerFileRepresentation(forTypeIdentifier: uti, fileOptions: [], visibility: .all) { completion in
+        completion(url, true, nil)   // true = permanent file, coordinated read (not deleted)
+        return nil
+    }
+    return provider
 }
 
 /// macOS 26 Liquid Glass behind the popover; falls back to vibrancy on older systems.
