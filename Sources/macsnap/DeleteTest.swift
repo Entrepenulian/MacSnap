@@ -3,7 +3,7 @@ import AppKit
 /// End-to-end check of the trash button + dissolve: builds the real panel, fires the
 /// same closure the button fires, plays the dissolve, and confirms the screenshot left
 /// its folder and is now in the Trash. Uses a temp file (never the user's Desktop).
-///   swift run macshot --deletetest
+///   swift run macsnap --deletetest
 final class DeleteTestController: NSObject, NSApplicationDelegate {
     private var stack: OverlayStack?
     private var controller: OverlayController?
@@ -12,7 +12,7 @@ final class DeleteTestController: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let fm = FileManager.default
-        dir = fm.temporaryDirectory.appendingPathComponent("macshot-del-\(UUID().uuidString)")
+        dir = fm.temporaryDirectory.appendingPathComponent("macsnap-del-\(UUID().uuidString)")
         try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
         fileURL = dir.appendingPathComponent("Screenshot delete-test.png")
         writePNG(sampleImage(), to: fileURL)

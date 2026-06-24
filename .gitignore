@@ -1,6 +1,6 @@
 # Build output
 .build/
-macshot.app/
+macsnap.app/
 *.o
 *.swiftmodule
 

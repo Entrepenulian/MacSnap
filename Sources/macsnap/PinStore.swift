@@ -8,7 +8,7 @@ final class PinStore {
 
     init(root: URL? = nil) {
         let base = root ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)
-            .first!.appendingPathComponent("macshot", isDirectory: true)
+            .first!.appendingPathComponent("macsnap", isDirectory: true)
         dir = base.appendingPathComponent("Pinned", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     }
@@ -25,7 +25,7 @@ final class PinStore {
             dest = dir.appendingPathComponent("\(base) \(n)").appendingPathExtension(ext); n += 1
         }
         do { try fm.copyItem(at: file, to: dest); return dest }
-        catch { NSLog("macshot: pin failed — \(error.localizedDescription)"); return nil }
+        catch { NSLog("macsnap: pin failed — \(error.localizedDescription)"); return nil }
     }
 
     /// Pin a raw image that isn't a file on disk — dragged from a browser, Preview,
@@ -42,7 +42,7 @@ final class PinStore {
             dest = dir.appendingPathComponent("\(baseName) \(n)").appendingPathExtension("png"); n += 1
         }
         do { try png.write(to: dest); return dest }
-        catch { NSLog("macshot: pin image failed — \(error.localizedDescription)"); return nil }
+        catch { NSLog("macsnap: pin image failed — \(error.localizedDescription)"); return nil }
     }
 
     /// Remove a pin (to the Trash, so it's recoverable).

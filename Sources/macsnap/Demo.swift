@@ -2,10 +2,10 @@ import AppKit
 import SwiftUI
 
 /// Shows the real native panel(s) on a live screen for verification.
-///   macshot --demo           → hover/controls state
-///   macshot --demo picker    → folder picker state
-///   macshot --demo stack     → three stacked screenshots of different aspect ratios
-///   macshot --demo reflow    → two stacked, then the bottom one is dismissed
+///   macsnap --demo           → hover/controls state
+///   macsnap --demo picker    → folder picker state
+///   macsnap --demo stack     → three stacked screenshots of different aspect ratios
+///   macsnap --demo reflow    → two stacked, then the bottom one is dismissed
 final class DemoController: NSObject, NSApplicationDelegate {
     private var panel: OverlayPanel!
     private var stack: OverlayStack?
@@ -74,7 +74,7 @@ final class DemoController: NSObject, NSApplicationDelegate {
         self.stack = stack
         for i in 0..<count {
             let (w, h, c) = shots[i % shots.count]
-            let url = URL(fileURLWithPath: "/tmp/macshot-demo-\(i).png")
+            let url = URL(fileURLWithPath: "/tmp/macsnap-demo-\(i).png")
             writePNG(shotImage(w, h, c), to: url)
             let controller = OverlayController(fileURL: url, store: store)
             controllers.append(controller)
@@ -98,7 +98,7 @@ final class DemoController: NSObject, NSApplicationDelegate {
         self.stack = stack
         for i in 0..<3 {
             let (w, h, c) = shots[i % shots.count]
-            let url = URL(fileURLWithPath: "/tmp/macshot-demo-\(i).png")
+            let url = URL(fileURLWithPath: "/tmp/macsnap-demo-\(i).png")
             writePNG(shotImage(w, h, c), to: url)
             let controller = OverlayController(fileURL: url, store: store)
             controllers.append(controller)
@@ -107,7 +107,7 @@ final class DemoController: NSObject, NSApplicationDelegate {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) { [weak self] in
             guard let self else { return }
             let (w, h, c) = self.shots[2]                 // a distinct (tall) 4th card
-            let url = URL(fileURLWithPath: "/tmp/macshot-demo-3.png")
+            let url = URL(fileURLWithPath: "/tmp/macsnap-demo-3.png")
             self.writePNG(self.shotImage(w, h, c), to: url)
             let controller = OverlayController(fileURL: url, store: store)
             self.controllers.append(controller)
@@ -139,7 +139,7 @@ final class DemoController: NSObject, NSApplicationDelegate {
 
     private func showGallery() {
         let fm = FileManager.default
-        let root = fm.temporaryDirectory.appendingPathComponent("macshot-gallery-\(UUID().uuidString)")
+        let root = fm.temporaryDirectory.appendingPathComponent("macsnap-gallery-\(UUID().uuidString)")
         try? fm.createDirectory(at: root, withIntermediateDirectories: true)
         let store = PinStore(root: root)
         for i in 0..<5 {
@@ -152,7 +152,7 @@ final class DemoController: NSObject, NSApplicationDelegate {
 
         // Real status item + the real flush GalleryPanel — exactly the production path.
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        let img = NSImage(systemSymbolName: "camera.viewfinder", accessibilityDescription: "macshot")
+        let img = NSImage(systemSymbolName: "camera.viewfinder", accessibilityDescription: "macsnap")
         img?.isTemplate = true
         item.button?.image = img
         demoStatusItem = item

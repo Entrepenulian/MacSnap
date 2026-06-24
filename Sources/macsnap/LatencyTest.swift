@@ -1,8 +1,8 @@
 import AppKit
 
-/// Measures real end-to-end latency: an actual `screencapture` PNG → macshot panel
-/// VISIBLE on screen, isolating macOS's own capture/write time from macshot's pipeline.
-///   swift run macshot --latencytest
+/// Measures real end-to-end latency: an actual `screencapture` PNG → macsnap panel
+/// VISIBLE on screen, isolating macOS's own capture/write time from macsnap's pipeline.
+///   swift run macsnap --latencytest
 final class LatencyController: NSObject, NSApplicationDelegate {
     private var watcher: ScreenshotWatcher!
     private var stack: OverlayStack!
@@ -14,10 +14,10 @@ final class LatencyController: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let fm = FileManager.default
-        dir = fm.temporaryDirectory.appendingPathComponent("macshot-lat-\(UUID().uuidString)")
+        dir = fm.temporaryDirectory.appendingPathComponent("macsnap-lat-\(UUID().uuidString)")
         try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
 
-        // Baseline: macOS's own capture + write time (no macshot involved).
+        // Baseline: macOS's own capture + write time (no macsnap involved).
         let b0 = Date()
         capture(to: dir.appendingPathComponent("baseline.png"), wait: true)
         baselineMs = Date().timeIntervalSince(b0) * 1000
@@ -54,9 +54,9 @@ final class LatencyController: NSObject, NSApplicationDelegate {
         done = true
         try? FileManager.default.removeItem(at: dir)
         print(String(format: "macOS capture+write (baseline):  %.0fms", baselineMs))
-        print(String(format: "screenshot → macshot detects:    %.0fms", max(0, detectMs)))
+        print(String(format: "screenshot → macsnap detects:    %.0fms", max(0, detectMs)))
         print(String(format: "screenshot → panel VISIBLE:      %.0fms total", max(0, visibleMs)))
-        print(String(format: "macshot pipeline (detect→visible): ~%.0fms", max(0, visibleMs - detectMs)))
+        print(String(format: "macsnap pipeline (detect→visible): ~%.0fms", max(0, visibleMs - detectMs)))
         print(visibleMs >= 0 ? "\nLATENCY OK" : "\nLATENCY TIMEOUT")
         NSApp.terminate(nil)
     }

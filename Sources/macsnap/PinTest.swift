@@ -3,7 +3,7 @@ import AppKit
 /// End-to-end check of the pin button → pin store → gallery flow: builds the real
 /// panel, fires the same closure the pin button fires, and confirms the screenshot
 /// is copied into the pin store and would appear in the gallery. Temp files only.
-///   swift run macshot --pintest
+///   swift run macsnap --pintest
 final class PinTestController: NSObject, NSApplicationDelegate {
     private var stack: OverlayStack?
     private var controller: OverlayController?
@@ -12,7 +12,7 @@ final class PinTestController: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let fm = FileManager.default
-        dir = fm.temporaryDirectory.appendingPathComponent("macshot-pin-\(UUID().uuidString)")
+        dir = fm.temporaryDirectory.appendingPathComponent("macsnap-pin-\(UUID().uuidString)")
         try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
         let fileURL = dir.appendingPathComponent("Screenshot pin-test.png")
         writePNG(sampleImage(), to: fileURL)

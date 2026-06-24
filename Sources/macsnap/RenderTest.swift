@@ -2,7 +2,7 @@ import SwiftUI
 import AppKit
 
 /// Renders the panel offscreen to PNGs so the look can be verified without the
-/// live floating window.  swift run macshot --render /tmp/macshot.png
+/// live floating window.  swift run macsnap --render /tmp/macsnap.png
 enum RenderTest {
     @MainActor
     static func run(_ outBase: String) {
@@ -40,7 +40,7 @@ enum RenderTest {
         // Gallery layout (glass + async thumbnails won't render offscreen, but the
         // structure — gallery on top, settings footer at the bottom — does).
         let gallery = GalleryModel()
-        gallery.pins = (0..<5).map { URL(fileURLWithPath: "/tmp/macshot-render-pin-\($0).png") }
+        gallery.pins = (0..<5).map { URL(fileURLWithPath: "/tmp/macsnap-render-pin-\($0).png") }
         write(GalleryView(model: gallery).background(Color(white: 0.12)).padding(24).background(desk), outBase, "-gallery")
 
         print("rendered \(outBase) (-rest / -hover / -picker / -gallery)")

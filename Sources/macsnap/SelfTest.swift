@@ -2,7 +2,7 @@ import Foundation
 import AppKit
 
 /// Deterministic, side-effect-free checks of the filing + detection logic.
-/// Run with:  swift run macshot --selftest
+/// Run with:  swift run macsnap --selftest
 enum SelfTest {
     static func run() -> Bool {
         var ok = true
@@ -11,12 +11,12 @@ enum SelfTest {
         }
 
         let fm = FileManager.default
-        let tmp = fm.temporaryDirectory.appendingPathComponent("macshot-selftest-\(UUID().uuidString)")
+        let tmp = fm.temporaryDirectory.appendingPathComponent("macsnap-selftest-\(UUID().uuidString)")
         try? fm.createDirectory(at: tmp, withIntermediateDirectories: true)
         defer { try? fm.removeItem(at: tmp) }
 
         print("FolderStore")
-        let key = "macshotSelfTest-\(UUID().uuidString)"
+        let key = "macsnapSelfTest-\(UUID().uuidString)"
         let store = FolderStore(root: tmp, defaultsKey: key)
         defer { UserDefaults.standard.removeObject(forKey: key) }
 

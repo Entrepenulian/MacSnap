@@ -12,22 +12,22 @@ final class AppController: NSObject, NSApplicationDelegate {
     private var lastAutoClose = Date.distantPast
     private weak var lastActiveApp: NSRunningApplication?   // the app you were in before the panel — the browser
     private let galleryModel = GalleryModel()
-    private var macshotEnabled = true   // on = macshot panel shows + native thumbnail off
+    private var macsnapEnabled = true   // on = macsnap panel shows + native thumbnail off
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupStatusItem()
 
-        // Restore the user's choice. First run: macshot takes over. Otherwise respect
+        // Restore the user's choice. First run: macsnap takes over. Otherwise respect
         // whatever they last set, and keep the system pref in sync with it.
         let defaults = UserDefaults.standard
-        if defaults.object(forKey: "macshotEnabled") == nil {
-            macshotEnabled = true
-            defaults.set(true, forKey: "macshotEnabled")
+        if defaults.object(forKey: "macsnapEnabled") == nil {
+            macsnapEnabled = true
+            defaults.set(true, forKey: "macsnapEnabled")
         } else {
-            macshotEnabled = defaults.bool(forKey: "macshotEnabled")
+            macsnapEnabled = defaults.bool(forKey: "macsnapEnabled")
         }
-        setNativeThumbnail(enabled: !macshotEnabled)
-        galleryModel.macshotEnabled = macshotEnabled
+        setNativeThumbnail(enabled: !macsnapEnabled)
+        galleryModel.macsnapEnabled = macsnapEnabled
 
         watcher.onNewScreenshot = { [weak self] url in self?.present(url) }
         watcher.start()
@@ -40,9 +40,9 @@ final class AppController: NSObject, NSApplicationDelegate {
 
         if let i = CommandLine.arguments.firstIndex(of: "--siteshot-test") {   // exercise the real captureSite path
             let s = (i + 1 < CommandLine.arguments.count) ? CommandLine.arguments[i + 1] : "https://example.com"
-            UserDefaults.standard.set(s, forKey: "macshotSiteURL")
+            UserDefaults.standard.set(s, forKey: "macsnapSiteURL")
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
-                NSLog("macshot: siteshot-test triggered"); self?.captureSite()
+                NSLog("macsnap: siteshot-test triggered"); self?.captureSite()
             }
         }
     }
@@ -60,8 +60,8 @@ final class AppController: NSObject, NSApplicationDelegate {
             _ = try FileManager.default.contentsOfDirectory(atPath: watcher.directory.path)
         } catch {
             let alert = NSAlert()
-            alert.messageText = "macshot needs access to your Desktop"
-            alert.informativeText = "To file screenshots into Desktop folders, allow macshot under System Settings → Privacy & Security → Files and Folders."
+            alert.messageText = "macsnap needs access to your Desktop"
+            alert.informativeText = "To file screenshots into Desktop folders, allow macsnap under System Settings → Privacy & Security → Files and Folders."
             alert.addButton(withTitle: "Open Settings")
             alert.addButton(withTitle: "Later")
             NSApp.activate(ignoringOtherApps: true)
@@ -81,7 +81,7 @@ final class AppController: NSObject, NSApplicationDelegate {
     private func setupStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {
-            let img = NSImage(systemSymbolName: "camera.viewfinder", accessibilityDescription: "macshot")
+            let img = NSImage(systemSymbolName: "camera.viewfinder", accessibilityDescription: "macsnap")
             img?.isTemplate = true
             button.image = img
             button.action = #selector(togglePanel)
@@ -109,7 +109,7 @@ final class AppController: NSObject, NSApplicationDelegate {
         galleryModel.onCatchLatest    = { [weak self] in self?.closePanel(); self?.testLatest() }
         galleryModel.onScreenshotSite = { [weak self] in self?.captureSite() }
         galleryModel.onOpenFolder     = { [weak self] in self?.closePanel(); self?.openFolder() }
-        galleryModel.onToggleMacshot = { [weak self] in self?.toggleThumbnail() }
+        galleryModel.onToggleMacsnap = { [weak self] in self?.toggleThumbnail() }
         galleryModel.onQuit          = { NSApp.terminate(nil) }
         galleryModel.onUnpin         = { [weak self] url in self?.pins.unpin(url); self?.refreshGallery() }
         galleryModel.onOpenPin       = { url in NSWorkspace.shared.open(url) }
@@ -221,13 +221,13 @@ final class AppController: NSObject, NSApplicationDelegate {
 
     private func refreshGallery() {
         galleryModel.pins = pins.pins()
-        galleryModel.macshotEnabled = macshotEnabled
+        galleryModel.macsnapEnabled = macsnapEnabled
     }
 
     // MARK: actions
 
     private func present(_ url: URL) {
-        guard macshotEnabled else { return }   // user chose native screenshots — stay out of the way
+        guard macsnapEnabled else { return }   // user chose native screenshots — stay out of the way
         stack.add(OverlayController(fileURL: url, store: folders, pins: pins))
     }
 
@@ -281,15 +281,15 @@ final class AppController: NSObject, NSApplicationDelegate {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
         p.arguments = ["-x", "-R\(Int(rect.minX)),\(Int(rect.minY)),\(Int(rect.width)),\(Int(rect.height))", dest.path]
-        do { try p.run() } catch { NSLog("macshot: site capture failed — \(error.localizedDescription)") }
+        do { try p.run() } catch { NSLog("macsnap: site capture failed — \(error.localizedDescription)") }
     }
 
     private func screenRecordingAlert() {
         let alert = NSAlert()
         alert.messageText = "One-time setup: Screen Recording"
-        alert.informativeText = "To capture exactly what you see, macshot needs Screen Recording — there's no way to screenshot your screen without it.\n\n1. Click Open Settings and turn ON macshot under Screen Recording.\n2. Come back here and click Relaunch macshot.\n\nThanks to a stable signature you only do this once — it won't reset on updates."
+        alert.informativeText = "To capture exactly what you see, macsnap needs Screen Recording — there's no way to screenshot your screen without it.\n\n1. Click Open Settings and turn ON macsnap under Screen Recording.\n2. Come back here and click Relaunch macsnap.\n\nThanks to a stable signature you only do this once — it won't reset on updates."
         alert.addButton(withTitle: "Open Settings")
-        alert.addButton(withTitle: "Relaunch macshot")
+        alert.addButton(withTitle: "Relaunch macsnap")
         alert.addButton(withTitle: "Later")
         NSApp.activate(ignoringOtherApps: true)
         switch alert.runModal() {
@@ -299,7 +299,7 @@ final class AppController: NSObject, NSApplicationDelegate {
             }
         case .alertSecondButtonReturn:
             let t = Process(); t.executableURL = URL(fileURLWithPath: "/bin/launchctl")
-            t.arguments = ["kickstart", "-k", "gui/\(getuid())/com.macshot.agent"]; try? t.run()
+            t.arguments = ["kickstart", "-k", "gui/\(getuid())/com.macsnap.agent"]; try? t.run()
         default: break
         }
     }
@@ -314,10 +314,10 @@ final class AppController: NSObject, NSApplicationDelegate {
     }
 
     @objc private func toggleThumbnail() {
-        macshotEnabled.toggle()
-        UserDefaults.standard.set(macshotEnabled, forKey: "macshotEnabled")
-        setNativeThumbnail(enabled: !macshotEnabled)
-        galleryModel.macshotEnabled = macshotEnabled
+        macsnapEnabled.toggle()
+        UserDefaults.standard.set(macsnapEnabled, forKey: "macsnapEnabled")
+        setNativeThumbnail(enabled: !macsnapEnabled)
+        galleryModel.macsnapEnabled = macsnapEnabled
     }
 
     @objc private func quit() { NSApp.terminate(nil) }

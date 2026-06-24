@@ -4,12 +4,12 @@ import UniformTypeIdentifiers
 
 final class GalleryModel: ObservableObject {
     @Published var pins: [URL] = []
-    @Published var macshotEnabled = true
+    @Published var macsnapEnabled = true
 
     var onCatchLatest: () -> Void = {}
     var onScreenshotSite: () -> Void = {}
     var onOpenFolder: () -> Void = {}
-    var onToggleMacshot: () -> Void = {}
+    var onToggleMacsnap: () -> Void = {}
     var onQuit: () -> Void = {}
     var onUnpin: (URL) -> Void = { _ in }
     var onOpenPin: (URL) -> Void = { _ in }
@@ -40,7 +40,7 @@ struct GalleryView: View {
         }
         .frame(width: 322)
         .modifier(GlassBackground())
-        // The whole panel accepts the drop — release an image anywhere over macshot and
+        // The whole panel accepts the drop — release an image anywhere over macsnap and
         // it pins. Forgiving on purpose: you don't have to land exactly on the grid.
         .onDrop(of: [.image, .fileURL], isTargeted: $dropTargeted) { providers in handleDrop(providers) }
     }
@@ -148,10 +148,10 @@ struct GalleryView: View {
             HStack(spacing: 11) {
                 Image(systemName: "camera.viewfinder")
                     .font(.system(size: 13)).foregroundStyle(.white.opacity(0.5)).frame(width: 17)
-                Text("Use macshot for screenshots")
+                Text("Use macsnap for screenshots")
                     .font(.system(size: 12.5)).foregroundStyle(.white.opacity(0.9))
                 Spacer(minLength: 8)
-                Toggle("", isOn: Binding(get: { model.macshotEnabled }, set: { _ in model.onToggleMacshot() }))
+                Toggle("", isOn: Binding(get: { model.macsnapEnabled }, set: { _ in model.onToggleMacsnap() }))
                     .labelsHidden().toggleStyle(.switch).tint(accent).controlSize(.small)
             }
             .padding(.horizontal, 13).frame(height: 36)
@@ -159,7 +159,7 @@ struct GalleryView: View {
             ActionRow(icon: "macwindow", title: "Screenshot site", action: model.onScreenshotSite)
             ActionRow(icon: "clock.arrow.circlepath", title: "Catch latest screenshot", action: model.onCatchLatest)
             ActionRow(icon: "folder", title: "Open screenshot folder", action: model.onOpenFolder)
-            ActionRow(icon: "power", title: "Quit macshot", action: model.onQuit)
+            ActionRow(icon: "power", title: "Quit macsnap", action: model.onQuit)
         }
         .padding(.vertical, 5)
         .background(RoundedRectangle(cornerRadius: 15, style: .continuous).fill(.white.opacity(0.05)))
@@ -291,7 +291,7 @@ func fileDragProvider(for url: URL) -> NSItemProvider {
 /// The original is only read, never moved or deleted; copies from past drags are pruned here.
 private func dragTempCopy(of url: URL) -> URL? {
     let fm = FileManager.default
-    let dir = fm.temporaryDirectory.appendingPathComponent("macshot-drags", isDirectory: true)
+    let dir = fm.temporaryDirectory.appendingPathComponent("macsnap-drags", isDirectory: true)
     try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
     if let old = try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.contentModificationDateKey]) {
         let cutoff = Date().addingTimeInterval(-86_400)   // keep a day; prune older

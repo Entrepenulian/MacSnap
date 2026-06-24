@@ -192,7 +192,7 @@ final class OverlayController: NSObject {
     private func delete() {
         guard !closed else { return }
         do { try FileManager.default.trashItem(at: fileURL, resultingItemURL: nil) }
-        catch { NSLog("macshot: delete failed — \(error.localizedDescription)") }
+        catch { NSLog("macsnap: delete failed — \(error.localizedDescription)") }
         finish(after: 0.30) { self.model.deleting = true }                             // blur + shrink + sink
     }
 
@@ -239,7 +239,7 @@ final class OverlayController: NSObject {
             model.showSaved(folder.isRoot ? "Desktop" : folder.name)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.95) { [weak self] in self?.close() }
         } catch {
-            NSLog("macshot: save failed — \(error.localizedDescription)")
+            NSLog("macsnap: save failed — \(error.localizedDescription)")
             presentFileError()
         }
     }
@@ -249,7 +249,7 @@ final class OverlayController: NSObject {
             let url = try store.createFolder(named: name)
             save(Folder(id: url.path, name: name, url: url, count: 0), name: model.baseName)
         } catch {
-            NSLog("macshot: create folder failed — \(error.localizedDescription)")
+            NSLog("macsnap: create folder failed — \(error.localizedDescription)")
             presentFileError()
         }
     }
@@ -257,7 +257,7 @@ final class OverlayController: NSObject {
     private func presentFileError() {
         let alert = NSAlert()
         alert.messageText = "Couldn’t file this screenshot"
-        alert.informativeText = "macshot may need permission to use your Desktop. Grant it in System Settings → Privacy & Security → Files and Folders, then try again. Your screenshot is untouched."
+        alert.informativeText = "macsnap may need permission to use your Desktop. Grant it in System Settings → Privacy & Security → Files and Folders, then try again. Your screenshot is untouched."
         alert.addButton(withTitle: "Open Settings")
         alert.addButton(withTitle: "OK")
         NSApp.activate(ignoringOtherApps: true)

@@ -1,6 +1,6 @@
 <div align="center">
 
-# macshot
+# macsnap
 
 **Screenshots that file themselves.**
 
@@ -16,7 +16,7 @@ Built like the paid tools. Priced like open source: free.
 
 <br>
 
-<img src="docs/hover.png" width="540" alt="macshot floating panel with Copy and Save">
+<img src="docs/hover.png" width="540" alt="macsnap floating panel with Copy and Save">
 
 </div>
 
@@ -24,11 +24,11 @@ Built like the paid tools. Priced like open source: free.
 
 You take a screenshot. It drops onto your Desktop with a name only a machine could love. A week later your Desktop is a wall of them.
 
-macshot fixes the last step. The instant a screenshot is saved, a panel appears in the corner. Hover it, hit **Save**, pick a folder. The file moves to `~/Desktop/<folder>/` and your Desktop stays clean.
+macsnap fixes the last step. The instant a screenshot is saved, a panel appears in the corner. Hover it, hit **Save**, pick a folder. The file moves to `~/Desktop/<folder>/` and your Desktop stays clean.
 
 ## Features
 
-**It appears instantly.** macshot detects the shot the moment the file finishes writing, so the panel is there as fast as macOS can hand it over. No artificial delay.
+**It appears instantly.** macsnap detects the shot the moment the file finishes writing, so the panel is there as fast as macOS can hand it over. No artificial delay.
 
 **At rest, it's just your screenshot.** No borders, no chrome. The real shot, sitting in the corner.
 
@@ -40,7 +40,7 @@ macshot fixes the last step. The instant a screenshot is saved, a panel appears 
 
 <img src="docs/picker.png" width="430" alt="The folder picker showing the Desktop baseline">
 
-**Create a folder as you type.** Type a name, press Return, and macshot makes the folder on your Desktop and files the shot into it. Next time, it's there to search.
+**Create a folder as you type.** Type a name, press Return, and macsnap makes the folder on your Desktop and files the shot into it. Next time, it's there to search.
 
 <img src="docs/create.png" width="430" alt="Type a name to create a new folder">
 
@@ -48,23 +48,23 @@ macshot fixes the last step. The instant a screenshot is saved, a panel appears 
 
 <img src="docs/stack-live.png" width="300" alt="A scrollable stack of screenshot previews in the corner">
 
-**Screenshot a web page.** Pick **Screenshot site** from the menu and macshot captures exactly the page you're looking at in your browser — just the content, no tabs or toolbar — straight into the corner, ready to file like any other shot.
+**Screenshot a web page.** Pick **Screenshot site** from the menu and macsnap captures exactly the page you're looking at in your browser — just the content, no tabs or toolbar — straight into the corner, ready to file like any other shot.
 
 **Pin the keepers.** The menu-bar icon holds a gallery of the screenshots you pin — real copies that stick around even if you move or delete the original. Drag any pin out into another app, or click it to open.
 
-**Drag images in from anywhere.** Drag an image onto the menu-bar icon — from Finder, or straight out of a browser, Preview, or Photos. macshot opens as you hover; let go on the icon, or carry on into the pinned section and drop there. Either way it's pinned (files keep their original; raw images are saved as PNG).
+**Drag images in from anywhere.** Drag an image onto the menu-bar icon — from Finder, or straight out of a browser, Preview, or Photos. macsnap opens as you hover; let go on the icon, or carry on into the pinned section and drop there. Either way it's pinned (files keep their original; raw images are saved as PNG).
 
 **Right-click to copy.** Right-click any pinned shot for **Copy**, **Open**, or **Unpin**. Copy puts the image on the clipboard — image first, so it pastes into chat boxes and editors as a picture — then closes the panel and hands focus back to the app you were in, so you can paste right away.
 
-**It stays on your Mac.** No account, no cloud, no telemetry. macshot moves files on your own disk. Nothing leaves.
+**It stays on your Mac.** No account, no cloud, no telemetry. macsnap moves files on your own disk. Nothing leaves.
 
 ## Install
 
 Hand this to your coding agent (Claude Code, Cursor, Codex, and friends) and let it do the setup:
 
 ```
-Clone https://github.com/Entrepenulian/macshot, run ./build-app.sh, move
-macshot.app to /Applications, and open it.
+Clone https://github.com/Entrepenulian/macsnap, run ./build-app.sh, move
+macsnap.app to /Applications, and open it.
 ```
 
 ## Using it
@@ -73,7 +73,7 @@ macshot.app to /Applications, and open it.
 2. The panel appears in the bottom-right.
 3. Hover it, hit **Save**, and pick or create a folder. Done.
 
-Not ready to file it? Ignore the panel and the shot stays on your Desktop like normal. macshot never deletes anything — it only moves a file when you choose a folder.
+Not ready to file it? Ignore the panel and the shot stays on your Desktop like normal. macsnap never deletes anything — it only moves a file when you choose a folder.
 
 Menu-bar icon → **Catch the latest screenshot** pops the panel on your most recent shot, handy for trying it without taking a new one.
 
@@ -87,15 +87,15 @@ Menu-bar icon → **Catch the latest screenshot** pops the panel on your most re
 
 ```bash
 swift build                    # debug build
-swift run macshot              # run from the terminal
-swift run macshot --selftest   # filing + detection self-tests
+swift run macsnap              # run from the terminal
+swift run macsnap --selftest   # filing + detection self-tests
 ./build-app.sh                 # release .app bundle
 ```
 
 ## Project layout
 
 ```
-Sources/macshot/
+Sources/macsnap/
   main.swift              entry point + CLI flags
   AppController.swift     menu bar, wiring, login-item / thumbnail toggle
   ScreenshotWatcher.swift detects new screenshots the instant they finish

@@ -36,7 +36,7 @@ final class ScreenshotWatcher {
         known = currentImageNames()
         fd = open(directory.path, O_EVTONLY)
         guard fd >= 0 else {
-            NSLog("macshot: could not watch \(directory.path) (errno \(errno))")
+            NSLog("macsnap: could not watch \(directory.path) (errno \(errno))")
             return
         }
         let src = DispatchSource.makeFileSystemObjectSource(
@@ -47,7 +47,7 @@ final class ScreenshotWatcher {
         }
         source = src
         src.resume()
-        NSLog("macshot: watching \(directory.path)")
+        NSLog("macsnap: watching \(directory.path)")
     }
 
     func stop() { source?.cancel(); source = nil }

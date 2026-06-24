@@ -2,12 +2,12 @@
 import PackageDescription
 
 let package = Package(
-    name: "macshot",
+    name: "macsnap",
     platforms: [.macOS(.v14)],
     targets: [
         .executableTarget(
-            name: "macshot",
-            path: "Sources/macshot",
+            name: "macsnap",
+            path: "Sources/macsnap",
             swiftSettings: [
                 .swiftLanguageMode(.v5)   // AppKit/NSObject ergonomics; avoids strict-concurrency churn for a V1
             ]

@@ -8,14 +8,14 @@ struct Folder: Identifiable, Hashable {
     var isRoot: Bool = false      // the Desktop itself (the always-present baseline)
 }
 
-/// macshot does NOT enumerate the whole Desktop. It only knows about the Desktop
+/// macsnap does NOT enumerate the whole Desktop. It only knows about the Desktop
 /// itself plus the folders you've created through it (persisted in UserDefaults).
 final class FolderStore {
     let desktop: URL
     private let defaultsKey: String
     private let recentsKey: String
 
-    init(root: URL? = nil, defaultsKey: String = "macshotFolders") {
+    init(root: URL? = nil, defaultsKey: String = "macsnapFolders") {
         self.desktop = root ?? FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Desktop", isDirectory: true)
         self.defaultsKey = defaultsKey
@@ -27,7 +27,7 @@ final class FolderStore {
         Folder(id: desktop.path, name: "Desktop", url: desktop, count: 0, isRoot: true)
     }
 
-    /// Folders you've created through macshot, pruned to those that still exist.
+    /// Folders you've created through macsnap, pruned to those that still exist.
     func savedFolders() -> [Folder] {
         let fm = FileManager.default
         let paths = UserDefaults.standard.stringArray(forKey: defaultsKey) ?? []

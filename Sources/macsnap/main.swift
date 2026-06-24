@@ -1,6 +1,6 @@
 import AppKit
 
-// macshot — a menu-bar agent that catches new screenshots and lets you file
+// macsnap — a menu-bar agent that catches new screenshots and lets you file
 // them into a Desktop folder from a floating glass panel.
 //
 // Runs as an .accessory app: no Dock icon, just a menu-bar item + the overlay.
@@ -12,7 +12,7 @@ if CommandLine.arguments.contains("--selftest") {
 if CommandLine.arguments.contains("--dragtest") {
     // Verify the dragged item carries an image type that other apps will accept.
     let fm = FileManager.default
-    let dir = fm.temporaryDirectory.appendingPathComponent("macshot-drag-\(UUID().uuidString)")
+    let dir = fm.temporaryDirectory.appendingPathComponent("macsnap-drag-\(UUID().uuidString)")
     try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
     let url = dir.appendingPathComponent("Screenshot drag.png")
     let p = Process()
@@ -72,7 +72,7 @@ if CommandLine.arguments.contains("--sitetest") {
 
 if let i = CommandLine.arguments.firstIndex(of: "--render") {
     _ = NSApplication.shared
-    let out = (i + 1 < CommandLine.arguments.count) ? CommandLine.arguments[i + 1] : "/tmp/macshot.png"
+    let out = (i + 1 < CommandLine.arguments.count) ? CommandLine.arguments[i + 1] : "/tmp/macsnap.png"
     MainActor.assumeIsolated { RenderTest.run(out) }
     exit(0)
 }
