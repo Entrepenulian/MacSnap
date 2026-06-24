@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 final class AppController: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
@@ -85,6 +86,24 @@ final class AppController: NSObject, NSApplicationDelegate {
             button.image = img
             button.action = #selector(togglePanel)
             button.target = self
+
+            // Drag image files from Finder onto the menu-bar icon: hovering springs the
+            // panel open so you can drop into the pinned section, and dropping straight
+            // on the icon pins them outright. A transparent overlay fills the button so
+            // it catches the drag while still forwarding plain clicks to the toggle.
+            let drop = StatusItemDropView()
+            drop.translatesAutoresizingMaskIntoConstraints = false
+            drop.onClick = { [weak self] in self?.togglePanel() }
+            drop.onDragEntered = { [weak self] in self?.openForDrag() }
+            drop.onDropFiles = { [weak self] urls in self?.pinDropped(urls) ?? false }
+            drop.onDropImages = { [weak self] images in self?.pinImages(images) ?? false }
+            button.addSubview(drop)
+            NSLayoutConstraint.activate([
+                drop.leadingAnchor.constraint(equalTo: button.leadingAnchor),
+                drop.trailingAnchor.constraint(equalTo: button.trailingAnchor),
+                drop.topAnchor.constraint(equalTo: button.topAnchor),
+                drop.bottomAnchor.constraint(equalTo: button.bottomAnchor),
+            ])
         }
 
         galleryModel.onCatchLatest    = { [weak self] in self?.closePanel(); self?.testLatest() }
@@ -95,6 +114,37 @@ final class AppController: NSObject, NSApplicationDelegate {
         galleryModel.onUnpin         = { [weak self] url in self?.pins.unpin(url); self?.refreshGallery() }
         galleryModel.onOpenPin       = { url in NSWorkspace.shared.open(url) }
         galleryModel.onCopyPin       = { [weak self] url in self?.copyPinAndDismiss(url) }
+        galleryModel.onDropFiles     = { [weak self] urls in self?.pinDropped(urls) ?? false }
+        galleryModel.onDropImages    = { [weak self] images in self?.pinImages(images) ?? false }
+    }
+
+    /// A drag of image files entered the menu-bar icon — open the panel (if it isn't
+    /// already) so the pinned section is right there to drop into.
+    private func openForDrag() {
+        // No fade: during a drag the run loop is in tracking mode and the alpha
+        // animation wouldn't run, leaving the panel transparent — and a transparent
+        // window can't be a drop target. Show it fully opaque right away.
+        if galleryPanel == nil { showPanel(animated: false) }
+    }
+
+    /// Pin every image file in a drop (from the icon or the pinned section). Copies them
+    /// into the pin store, then opens or refreshes the panel so they show up immediately.
+    @discardableResult
+    private func pinDropped(_ urls: [URL]) -> Bool {
+        let images = urls.filter { PinStore.imageExts.contains($0.pathExtension.lowercased()) }
+        guard !images.isEmpty else { return false }
+        for url in images { pins.pin(url) }
+        if galleryPanel == nil { showPanel() } else { refreshGallery() }
+        return true
+    }
+
+    /// Pin raw images (dragged from a browser, Preview, anywhere that isn't a file path).
+    @discardableResult
+    private func pinImages(_ images: [NSImage]) -> Bool {
+        guard !images.isEmpty else { return false }
+        for image in images { pins.pinImage(image) }
+        if galleryPanel == nil { showPanel() } else { refreshGallery() }
+        return true
     }
 
     /// Right-click → Copy on a pinned shot: put it on the clipboard, dismiss the panel,
@@ -120,7 +170,7 @@ final class AppController: NSObject, NSApplicationDelegate {
         showPanel()
     }
 
-    private func showPanel() {
+    private func showPanel(animated: Bool = true) {
         refreshGallery()
         let hosting = NSHostingView(rootView: GalleryView(model: galleryModel))
         hosting.layoutSubtreeIfNeeded()
@@ -140,13 +190,20 @@ final class AppController: NSObject, NSApplicationDelegate {
             panel.setFrame(NSRect(x: x, y: y, width: size.width, height: size.height), display: true)
         }
 
-        panel.alphaValue = 0
         galleryPanel = panel
         NSApp.activate(ignoringOtherApps: true)
-        panel.makeKeyAndOrderFront(nil)
-        NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = 0.12
-            panel.animator().alphaValue = 1
+        if animated {
+            panel.alphaValue = 0
+            panel.makeKeyAndOrderFront(nil)
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = 0.12
+                panel.animator().alphaValue = 1
+            }
+        } else {
+            // Spring-opened mid-drag: fully opaque immediately so it's a live drop target.
+            panel.alphaValue = 1
+            panel.makeKeyAndOrderFront(nil)
+            panel.orderFrontRegardless()
         }
         NotificationCenter.default.addObserver(self, selector: #selector(panelResignedKey),
                                                name: NSWindow.didResignKeyNotification, object: panel)
@@ -295,4 +352,60 @@ final class GalleryPanel: NSPanel {
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
     }
     override var canBecomeKey: Bool { true }
+}
+
+/// A transparent overlay sized to the menu-bar button. It accepts dragged image files
+/// (springing the panel open on entry, pinning them on drop) and forwards a plain click
+/// straight to the panel toggle so the icon still behaves normally.
+final class StatusItemDropView: NSView {
+    var onClick: () -> Void = {}
+    var onDragEntered: () -> Void = {}
+    var onDropFiles: ([URL]) -> Bool = { _ in false }
+    var onDropImages: ([NSImage]) -> Bool = { _ in false }
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        // Image files (Finder) plus raw image data dragged from anywhere — browsers,
+        // Preview, Photos, screenshot tools, any app that hands over a picture.
+        registerForDraggedTypes([.fileURL] + NSImage.imageTypes.map { NSPasteboard.PasteboardType($0) })
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) not used") }
+
+    /// Image file URLs in the drag (kept as originals), or [] if it carries none.
+    private func imageURLs(_ sender: NSDraggingInfo) -> [URL] {
+        let options: [NSPasteboard.ReadingOptionKey: Any] = [
+            .urlReadingFileURLsOnly: true,
+            .urlReadingContentsConformToTypes: [UTType.image.identifier],
+        ]
+        return (sender.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: options) as? [URL]) ?? []
+    }
+
+    /// True when the drag carries something pinnable — an image file or raw image data.
+    private func hasImage(_ sender: NSDraggingInfo) -> Bool {
+        !imageURLs(sender).isEmpty || NSImage.canInit(with: sender.draggingPasteboard)
+    }
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        guard hasImage(sender) else { return [] }
+        onDragEntered()
+        return .copy
+    }
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        hasImage(sender) ? .copy : []
+    }
+    override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        hasImage(sender)
+    }
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        // Prefer real files (keeps the original format/name); else pin the raw image data.
+        let urls = imageURLs(sender)
+        if !urls.isEmpty { return onDropFiles(urls) }
+        if let images = sender.draggingPasteboard.readObjects(forClasses: [NSImage.self], options: nil) as? [NSImage],
+           !images.isEmpty {
+            return onDropImages(images)
+        }
+        return false
+    }
+
+    override func mouseDown(with event: NSEvent) { onClick() }
 }
