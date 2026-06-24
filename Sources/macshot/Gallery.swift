@@ -259,18 +259,34 @@ struct PinThumb: View {
 /// A drag payload every destination accepts as a real file — Finder, Mail, native apps,
 /// AND browser web drop zones (ChatGPT, Gmail) and other sandboxed apps.
 ///
-/// `NSItemProvider(contentsOf:)` also registers `public.url` / `public.file-url`, which
-/// browsers map to the drag's `text/uri-list` — i.e. a *link* — so a web upload zone that
-/// only reads `dataTransfer.files` sees nothing and the drop silently fails. Registering a
-/// single *promised* file representation under the file's concrete type (e.g. `public.png`)
-/// makes the system hand real file bytes to the destination on drop, with no URL to
-/// misinterpret. The original file is read in place — never moved or deleted.
+/// Two things make this universal:
+///
+/// 1. `NSItemProvider(contentsOf:)` also registers `public.url` / `public.file-url`, which
+///    browsers map to the drag's `text/uri-list` — i.e. a *link* — so a web upload zone that
+///    only reads `dataTransfer.files` sees nothing and the drop silently fails. We register a
+///    single *promised* file representation under the file's concrete type (e.g. `public.png`)
+///    instead, with no URL to misinterpret.
+/// 2. We hand over a throwaway **copy in an unprotected temp dir** rather than the original.
+///    A corner-preview shot lives on the TCC-protected Desktop, which a browser or sandboxed
+///    destination can't read in place — so an in-place hand-off delivers nothing. Copying to
+///    temp (`coordinated: false` → the system owns and cleans up the copy) means the
+///    destination can always read the bytes, wherever the original lives. The original file
+///    is only read, never moved or deleted.
 func fileDragProvider(for url: URL) -> NSItemProvider {
     let provider = NSItemProvider()
     provider.suggestedName = url.lastPathComponent
     let uti = (UTType(filenameExtension: url.pathExtension) ?? .image).identifier
     provider.registerFileRepresentation(forTypeIdentifier: uti, fileOptions: [], visibility: .all) { completion in
-        completion(url, true, nil)   // true = permanent file, coordinated read (not deleted)
+        do {
+            let dir = FileManager.default.temporaryDirectory
+                .appendingPathComponent("macshot-drag-\(UUID().uuidString)", isDirectory: true)
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            let copy = dir.appendingPathComponent(url.lastPathComponent)
+            try FileManager.default.copyItem(at: url, to: copy)
+            completion(copy, false, nil)      // system owns + cleans up the temp copy
+        } catch {
+            completion(url, true, error)       // fall back to reading the original in place
+        }
         return nil
     }
     return provider
