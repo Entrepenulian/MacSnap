@@ -12,6 +12,7 @@ final class AppController: NSObject, NSApplicationDelegate {
     private var lastAutoClose = Date.distantPast
     private weak var lastActiveApp: NSRunningApplication?   // the app you were in before the panel — the browser
     private let galleryModel = GalleryModel()
+    private let recording = RecordingController()
     private var macsnapEnabled = true   // on = macsnap panel shows + native thumbnail off
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -28,6 +29,9 @@ final class AppController: NSObject, NSApplicationDelegate {
         }
         setNativeThumbnail(enabled: !macsnapEnabled)
         galleryModel.macsnapEnabled = macsnapEnabled
+
+        recording.onStateChange = { [weak self] in self?.updateRecordingUI() }
+        recording.onFinished = { [weak self] url in self?.recordingFinished(url) }
 
         watcher.onNewScreenshot = { [weak self] url in self?.present(url) }
         watcher.start()
@@ -110,6 +114,7 @@ final class AppController: NSObject, NSApplicationDelegate {
         galleryModel.onScreenshotSite = { [weak self] in self?.captureSite() }
         galleryModel.onOpenFolder     = { [weak self] in self?.closePanel(); self?.openFolder() }
         galleryModel.onToggleMacsnap = { [weak self] in self?.toggleThumbnail() }
+        galleryModel.onRecord        = { [weak self] in self?.closePanel(); self?.recording.toggle() }
         galleryModel.onQuit          = { NSApp.terminate(nil) }
         galleryModel.onUnpin         = { [weak self] url in self?.pins.unpin(url); self?.refreshGallery() }
         galleryModel.onOpenPin       = { url in NSWorkspace.shared.open(url) }
@@ -250,6 +255,28 @@ final class AppController: NSObject, NSApplicationDelegate {
     }
 
     @objc private func openFolder() { NSWorkspace.shared.open(watcher.directory) }
+
+    // MARK: recording
+
+    /// Reflect recording state in the menu-bar icon (a red stop glyph) and the panel.
+    private func updateRecordingUI() {
+        galleryModel.isRecording = recording.isRecording
+        if let button = statusItem.button {
+            let live = recording.isRecording
+            let img = NSImage(systemSymbolName: live ? "stop.circle.fill" : "camera.viewfinder",
+                              accessibilityDescription: "macsnap")
+            img?.isTemplate = !live
+            button.image = img
+            button.contentTintColor = live ? .systemRed : nil
+        }
+        if galleryPanel != nil { refreshGallery() }
+    }
+
+    /// A recording finished and was saved to ~/Desktop/MacSnap Recordings.
+    /// (The custom liquid-glass player opens here once it lands; for now, preview it.)
+    private func recordingFinished(_ url: URL) {
+        NSWorkspace.shared.open(url)
+    }
 
     // MARK: screenshot a website — captures EXACTLY what you see: the VISIBLE page region
     // (no chrome, no full-page extension) of the browser you're in, with your live session.

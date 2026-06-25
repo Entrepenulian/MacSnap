@@ -5,9 +5,11 @@ import UniformTypeIdentifiers
 final class GalleryModel: ObservableObject {
     @Published var pins: [URL] = []
     @Published var macsnapEnabled = true
+    @Published var isRecording = false
 
     var onCatchLatest: () -> Void = {}
     var onScreenshotSite: () -> Void = {}
+    var onRecord: () -> Void = {}
     var onOpenFolder: () -> Void = {}
     var onToggleMacsnap: () -> Void = {}
     var onQuit: () -> Void = {}
@@ -157,6 +159,10 @@ struct GalleryView: View {
             .padding(.horizontal, 13).frame(height: 36)
 
             ActionRow(icon: "macwindow", title: "Screenshot site", action: model.onScreenshotSite)
+            ActionRow(icon: model.isRecording ? "stop.circle.fill" : "record.circle",
+                      title: model.isRecording ? "Stop recording" : "Record",
+                      tint: model.isRecording ? accent : nil,
+                      action: model.onRecord)
             ActionRow(icon: "clock.arrow.circlepath", title: "Catch latest screenshot", action: model.onCatchLatest)
             ActionRow(icon: "folder", title: "Open screenshot folder", action: model.onOpenFolder)
             ActionRow(icon: "power", title: "Quit macsnap", action: model.onQuit)
@@ -174,6 +180,7 @@ struct GalleryView: View {
 struct ActionRow: View {
     let icon: String
     let title: String
+    var tint: Color? = nil
     let action: () -> Void
     @State private var hover = false
 
@@ -181,9 +188,11 @@ struct ActionRow: View {
         Button(action: action) {
             HStack(spacing: 11) {
                 Image(systemName: icon)
-                    .font(.system(size: 13)).foregroundStyle(.white.opacity(hover ? 0.85 : 0.5)).frame(width: 17)
+                    .font(.system(size: 13))
+                    .foregroundStyle(tint ?? .white.opacity(hover ? 0.85 : 0.5)).frame(width: 17)
                 Text(title)
-                    .font(.system(size: 12.5)).foregroundStyle(.white.opacity(hover ? 1 : 0.9))
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(tint ?? .white.opacity(hover ? 1 : 0.9))
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 9).frame(height: 34)
