@@ -1,27 +1,23 @@
 import AppKit
 
-/// A thin, click-through border drawn around the region being recorded, so you
-/// can always see exactly what's being captured. It sits *just outside* the
-/// recorded rect, so the border itself never ends up in the video.
+/// While recording a region, the rest of the screen is dimmed and the recorded
+/// region stays at full, true colour — the same look as dragging to choose an
+/// area, minus any border. It's click-through, and the dim sits *outside* the
+/// captured region so it never ends up in the video.
 final class RecordingBorderOverlay {
     private var panel: NSPanel?
-    private let lineWidth: CGFloat = 3
 
-    /// Show the border around a region given in global, top-left-origin screen
-    /// points (the same space the recorder uses for an area / a window frame).
-    /// NSWindow must be created on the main thread; hop there if needed.
+    /// Show the dim around a region given in global, top-left-origin screen points
+    /// (the same space the recorder uses for an area / a window frame).
     func show(globalTopLeft rect: CGRect) {
         guard Thread.isMainThread else {
             DispatchQueue.main.async { self.show(globalTopLeft: rect) }
             return
         }
         hide()
-        let appkit = Self.appKitRect(fromGlobalTopLeft: rect)
-        // The panel is the region plus a `lineWidth` margin all around; the border
-        // is drawn in that margin so the captured region stays clean.
-        let frame = appkit.insetBy(dx: -lineWidth, dy: -lineWidth)
+        guard let screen = Self.screen(containing: rect) else { return }
 
-        let p = NSPanel(contentRect: frame, styleMask: [.borderless, .nonactivatingPanel],
+        let p = NSPanel(contentRect: screen.frame, styleMask: [.borderless, .nonactivatingPanel],
                         backing: .buffered, defer: false)
         p.level = NSWindow.Level(rawValue: Int(CGShieldingWindowLevel()))
         p.isOpaque = false
@@ -30,8 +26,12 @@ final class RecordingBorderOverlay {
         p.ignoresMouseEvents = true            // click-through: never blocks what you're recording
         p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
 
-        let v = BorderView(frame: NSRect(origin: .zero, size: frame.size))
-        v.lineWidth = lineWidth
+        // The clear "hole" (the recorded region) in the panel's view coordinates.
+        let hole = NSRect(x: rect.minX - screen.frame.minX,
+                          y: screen.frame.maxY - rect.maxY,
+                          width: rect.width, height: rect.height)
+        let v = DimView(frame: NSRect(origin: .zero, size: screen.frame.size))
+        v.hole = hole
         p.contentView = v
         p.orderFrontRegardless()
         panel = p
@@ -42,31 +42,28 @@ final class RecordingBorderOverlay {
         panel?.orderOut(nil); panel = nil
     }
 
-    /// Convert a global top-left-origin CG rect to AppKit's bottom-left global space.
-    private static func appKitRect(fromGlobalTopLeft cg: CGRect) -> CGRect {
-        let primaryH = (NSScreen.screens.first { $0.frame.origin == .zero } ?? NSScreen.main)?.frame.height ?? cg.height
-        return CGRect(x: cg.minX, y: primaryH - cg.maxY, width: cg.width, height: cg.height)
+    /// The NSScreen the region lives on (its centre), in global top-left CG points.
+    private static func screen(containing rect: CGRect) -> NSScreen? {
+        let centerCG = CGPoint(x: rect.midX, y: rect.midY)
+        for s in NSScreen.screens {
+            // CGDisplayBounds is top-left global, matching `rect`.
+            if let num = s.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID,
+               CGDisplayBounds(num).contains(centerCG) {
+                return s
+            }
+        }
+        return NSScreen.main
     }
 }
 
-/// Draws the hollow border in the outer margin (so it hugs the region from just
-/// outside). White line with a faint dark halo so it reads on any backdrop.
-private final class BorderView: NSView {
-    var lineWidth: CGFloat = 3
+/// Dims its whole bounds except a clear hole at the recorded region.
+private final class DimView: NSView {
+    var hole: NSRect = .zero { didSet { needsDisplay = true } }
 
     override func draw(_ dirtyRect: NSRect) {
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
-        // The region sits at inset `lineWidth`; stroke centred at lineWidth/2 fills
-        // the [0, lineWidth] margin — entirely outside the captured region.
-        let r = bounds.insetBy(dx: lineWidth / 2, dy: lineWidth / 2)
-
-        // Faint dark halo just outside the white line for contrast on light scenes.
-        ctx.setStrokeColor(NSColor.black.withAlphaComponent(0.28).cgColor)
-        ctx.setLineWidth(lineWidth + 2)
-        ctx.stroke(r)
-
-        ctx.setStrokeColor(NSColor.white.cgColor)
-        ctx.setLineWidth(lineWidth)
-        ctx.stroke(r)
+        ctx.setFillColor(NSColor.black.withAlphaComponent(0.28).cgColor)
+        ctx.fill(bounds)
+        ctx.clear(hole)               // punch the region clear → it shows true colours
     }
 }

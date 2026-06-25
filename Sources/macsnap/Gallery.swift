@@ -231,16 +231,13 @@ struct PinThumb: View {
                             .aspectRatio(contentMode: .fill)
                     }
                 }
-                // A recording shows a play badge: greyed at rest, white on hover.
+                // A recording shows a plain play icon: greyed at rest, white on hover.
                 .overlay {
                     if isVideo {
                         Image(systemName: "play.fill")
-                            .font(.system(size: 15, weight: .semibold))
+                            .font(.system(size: 30, weight: .semibold))
                             .foregroundStyle(.white.opacity(hover ? 1 : 0.7))
-                            .frame(width: 38, height: 38)
-                            .background(.black.opacity(0.32), in: Circle())
-                            .overlay(Circle().strokeBorder(.white.opacity(hover ? 0.5 : 0.25)))
-                            .shadow(color: .black.opacity(0.3), radius: 6, y: 2)
+                            .shadow(color: .black.opacity(0.45), radius: 7, y: 1)
                     }
                 }
                 .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
