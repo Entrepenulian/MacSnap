@@ -9,7 +9,12 @@ final class RecordingBorderOverlay {
 
     /// Show the border around a region given in global, top-left-origin screen
     /// points (the same space the recorder uses for an area / a window frame).
+    /// NSWindow must be created on the main thread; hop there if needed.
     func show(globalTopLeft rect: CGRect) {
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async { self.show(globalTopLeft: rect) }
+            return
+        }
         hide()
         let appkit = Self.appKitRect(fromGlobalTopLeft: rect)
         // The panel is the region plus a `lineWidth` margin all around; the border
@@ -32,7 +37,10 @@ final class RecordingBorderOverlay {
         panel = p
     }
 
-    func hide() { panel?.orderOut(nil); panel = nil }
+    func hide() {
+        guard Thread.isMainThread else { DispatchQueue.main.async { self.hide() }; return }
+        panel?.orderOut(nil); panel = nil
+    }
 
     /// Convert a global top-left-origin CG rect to AppKit's bottom-left global space.
     private static func appKitRect(fromGlobalTopLeft cg: CGRect) -> CGRect {

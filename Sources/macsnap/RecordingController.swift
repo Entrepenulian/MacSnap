@@ -67,9 +67,12 @@ final class RecordingController {
 
         do {
             try await recorder.start(target: target, to: url)
-            isRecording = true
-            showBorder(for: target)
-            onStateChange?()
+            // All UI (status item, the region border) must touch the main thread.
+            await MainActor.run {
+                self.isRecording = true
+                self.showBorder(for: target)
+                self.onStateChange?()
+            }
         } catch {
             NSLog("macsnap: recording failed to start — \(error.localizedDescription)")
         }
