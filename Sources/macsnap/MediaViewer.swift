@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import AVFoundation
+import AVKit
 import UniformTypeIdentifiers
 
 /// What the viewer is showing.
@@ -219,64 +220,39 @@ private struct VideoPane: View {
     @StateObject private var model: PlayerModel
     @State private var hovering = false
     @State private var savingGIF = false
-    @State private var intro = true     // controls greet on open, then auto-hide
 
     init(url: URL) {
         self.url = url
         _model = StateObject(wrappedValue: PlayerModel(url: url))
     }
 
-    private var controlsVisible: Bool { hovering || !model.isPlaying || intro }
-
     var body: some View {
         MediaFrame(aspect: model.aspect) {
-            PlayerLayerView(player: model.player)
-                .background(Color.black)
-                .onTapGesture { model.togglePlay() }
+            AVKitPlayerView(player: model.player)
         }
-        .overlay(alignment: .bottom) {
-            controls
-                .padding(14)
-                .opacity(controlsVisible ? 1 : 0)
-                .offset(y: controlsVisible ? 0 : 8)
-                .animation(.easeOut(duration: 0.22), value: controlsVisible)
+        // App actions the native transport doesn't cover, tucked top-right on hover.
+        .overlay(alignment: .topTrailing) {
+            actions
+                .padding(12)
+                .opacity(hovering ? 1 : 0)
+                .offset(y: hovering ? 0 : -4)
+                .animation(.easeOut(duration: 0.18), value: hovering)
         }
         .onHover { hovering = $0 }
-        .onAppear {
-            model.play()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.6) { intro = false }
-        }
+        .onAppear { model.play() }
         .onDisappear { model.pause() }
     }
 
-    private var controls: some View {
-        HStack(spacing: 12) {
-            Button(action: model.togglePlay) {
-                Image(systemName: model.isPlaying ? "pause.fill" : "play.fill")
-                    .font(.system(size: 14, weight: .semibold)).foregroundStyle(.white)
-                    .frame(width: 30, height: 30)
-            }
-            .buttonStyle(.plain)
-
-            Text(timecode(model.current)).font(.system(size: 11, weight: .medium)).monospacedDigit()
-                .foregroundStyle(.white.opacity(0.8))
-
-            Scrubber(value: $model.current, total: model.duration) { model.seek(to: $0) }
-
-            Text(timecode(model.duration)).font(.system(size: 11, weight: .medium)).monospacedDigit()
-                .foregroundStyle(.white.opacity(0.55))
-
-            Divider().frame(height: 18).overlay(Color.white.opacity(0.14))
-
+    private var actions: some View {
+        HStack(spacing: 2) {
             iconButton("doc.on.doc", "Copy") { copyFile() }
             iconButton(savingGIF ? "hourglass" : "square.stack.3d.down.right", "Save GIF") { saveGIF() }
                 .disabled(savingGIF)
             iconButton("folder", "Reveal") { NSWorkspace.shared.activateFileViewerSelecting([url]) }
         }
-        .padding(.horizontal, 14).padding(.vertical, 9)
-        .modifier(ViewerGlass(corner: 18))
-        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(.white.opacity(0.1)))
-        .frame(maxWidth: 560)
+        .padding(5)
+        .modifier(ViewerGlass(corner: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(.white.opacity(0.1)))
     }
 
     private func iconButton(_ icon: String, _ help: String, _ action: @escaping () -> Void) -> some View {
@@ -300,101 +276,44 @@ private struct VideoPane: View {
         }
     }
 
-    private func timecode(_ s: Double) -> String {
-        guard s.isFinite, s >= 0 else { return "0:00" }
-        let t = Int(s.rounded()); return String(format: "%d:%02d", t / 60, t % 60)
-    }
 }
 
-/// A thin liquid-glass scrubber that fills to the playhead and scrubs on drag.
-private struct Scrubber: View {
-    @Binding var value: Double
-    let total: Double
-    let onSeek: (Double) -> Void
-
-    private let accent = Color(red: 1.0, green: 0.416, blue: 0.102)
-
-    var body: some View {
-        GeometryReader { geo in
-            let frac = total > 0 ? min(max(value / total, 0), 1) : 0
-            ZStack(alignment: .leading) {
-                Capsule().fill(.white.opacity(0.18)).frame(height: 4)
-                Capsule().fill(accent).frame(width: geo.size.width * frac, height: 4)
-                Circle().fill(.white).frame(width: 11, height: 11)
-                    .shadow(color: .black.opacity(0.3), radius: 2, y: 1)
-                    .offset(x: geo.size.width * frac - 5.5)
-            }
-            .frame(maxHeight: .infinity)
-            .contentShape(Rectangle())
-            .gesture(DragGesture(minimumDistance: 0).onChanged { g in
-                let f = min(max(g.location.x / geo.size.width, 0), 1)
-                onSeek(f * total)
-            })
-        }
-        .frame(height: 16)
-    }
-}
-
-/// Wraps an AVPlayer in a controls-free layer (so the chrome is entirely ours).
-private struct PlayerLayerView: NSViewRepresentable {
+/// The native AVKit player. Its floating transport IS the system's own
+/// Liquid-Glass media controls — we only supply the player and the glass frame.
+private struct AVKitPlayerView: NSViewRepresentable {
     let player: AVPlayer
-    func makeNSView(context: Context) -> PlayerNSView { let v = PlayerNSView(); v.playerLayer.player = player; return v }
-    func updateNSView(_ nsView: PlayerNSView, context: Context) { nsView.playerLayer.player = player }
-}
-
-private final class PlayerNSView: NSView {
-    let playerLayer = AVPlayerLayer()
-    override init(frame: NSRect) {
-        super.init(frame: frame)
-        wantsLayer = true
-        playerLayer.videoGravity = .resizeAspect
-        layer?.addSublayer(playerLayer)
+    func makeNSView(context: Context) -> AVPlayerView {
+        let v = AVPlayerView()
+        v.player = player
+        v.controlsStyle = .floating
+        v.videoGravity = .resizeAspect
+        v.allowsPictureInPicturePlayback = true
+        v.showsFullScreenToggleButton = false
+        return v
     }
-    required init?(coder: NSCoder) { fatalError() }
-    override func layout() { super.layout(); playerLayer.frame = bounds }
+    func updateNSView(_ nsView: AVPlayerView, context: Context) { nsView.player = player }
 }
 
-/// Player state for the custom controls: play/pause, position, duration, looping.
+/// Holds the player, the media aspect (for the glass frame), and a GIF-style loop.
 final class PlayerModel: ObservableObject {
     let player: AVPlayer
-    @Published var isPlaying = false
-    @Published var current: Double = 0
-    @Published var duration: Double = 0
     @Published var aspect: CGFloat = 16.0 / 9.0
-
-    private var observer: Any?
 
     init(url: URL) {
         player = AVPlayer(url: url)
-        let item = player.currentItem
-        observer = player.addPeriodicTimeObserver(
-            forInterval: CMTime(seconds: 0.05, preferredTimescale: 600), queue: .main) { [weak self] t in
-            guard let self else { return }
-            self.current = t.seconds
-            if self.duration == 0, let d = item?.duration.seconds, d.isFinite, d > 0 { self.duration = d }
-        }
         if let track = AVURLAsset(url: url).tracks(withMediaType: .video).first {
             let s = track.naturalSize.applying(track.preferredTransform)
             let sz = CGSize(width: abs(s.width), height: abs(s.height))
             if sz.height > 0 { aspect = sz.width / sz.height }
         }
-        // Loop the preview, GIF-style.
         NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime,
-                                               object: item, queue: .main) { [weak self] _ in
+                                               object: player.currentItem, queue: .main) { [weak self] _ in
             self?.player.seek(to: .zero); self?.player.play()
         }
     }
 
-    deinit { if let observer { player.removeTimeObserver(observer) } }
-
-    func play() { player.play(); isPlaying = true }
-    func pause() { player.pause(); isPlaying = false }
-    func togglePlay() { isPlaying ? pause() : play() }
-    func seek(to s: Double) {
-        player.seek(to: CMTime(seconds: s, preferredTimescale: 600),
-                    toleranceBefore: .zero, toleranceAfter: .zero)
-        current = s
-    }
+    func play() { player.play() }
+    func pause() { player.pause() }
 }
 
 // MARK: - Shared bits
