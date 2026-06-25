@@ -187,8 +187,8 @@ struct ShotView: View {
                 .aspectRatio(contentMode: .fill)
                 .frame(width: W, height: imageH, alignment: .top)   // crop (if any) hangs off the bottom
                 .clipped()
-                .blur(radius: showUI ? 3.5 : 0)
-                .overlay(Color.black.opacity(showUI ? 0.20 : 0))
+                // No hover blur/darken — the preview stays crisp; only the controls
+                // appear over it (they carry their own frosted backgrounds for legibility).
 
             if model.mode == .saved { savedOverlay }
             else { controls.opacity(showUI ? 1 : 0) }
