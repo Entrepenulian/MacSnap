@@ -27,7 +27,7 @@ cat > "${APP}/Contents/Info.plist" <<'PLIST'
   <key>CFBundleShortVersionString</key><string>1.0</string>
   <key>CFBundleExecutable</key>      <string>macsnap</string>
   <key>CFBundlePackageType</key>     <string>APPL</string>
-  <key>LSMinimumSystemVersion</key>  <string>14.0</string>
+  <key>LSMinimumSystemVersion</key>  <string>26.0</string>
   <key>LSUIElement</key>             <true/>
   <key>NSHighResolutionCapable</key> <true/>
   <key>NSAppTransportSecurity</key>
