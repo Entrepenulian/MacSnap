@@ -333,16 +333,53 @@ private struct VideoPane: View {
 private struct AVKitPlayerView: NSViewRepresentable {
     let player: AVPlayer
 
-    func makeNSView(context: Context) -> AVPlayerView {
-        let v = AVPlayerView()
-        v.player = player
-        v.controlsStyle = .inline
-        v.videoGravity = .resizeAspect
-        v.allowsPictureInPicturePlayback = true
-        v.showsFullScreenToggleButton = false
+    func makeNSView(context: Context) -> ScrimFreePlayerView {
+        let v = ScrimFreePlayerView()
+        v.player.player = player
         return v
     }
-    func updateNSView(_ nsView: AVPlayerView, context: Context) { nsView.player = player }
+    func updateNSView(_ nsView: ScrimFreePlayerView, context: Context) { nsView.player.player = player }
+}
+
+/// Hosts the native AVPlayerView but keeps its hover "controls scrim" cleared, so
+/// showing the controls never darkens the video. AVKit dims by giving a full-size
+/// view a translucent-black background; we watch for that and clear it.
+final class ScrimFreePlayerView: NSView {
+    let player = AVPlayerView()
+    private var timer: Timer?
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        player.controlsStyle = .inline
+        player.videoGravity = .resizeAspect
+        player.allowsPictureInPicturePlayback = true
+        player.showsFullScreenToggleButton = false
+        addSubview(player)
+        // The scrim fades in on hover; clear it continuously so it never shows.
+        let t = Timer(timeInterval: 0.05, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            Self.clearScrims(in: self.player)
+        }
+        RunLoop.main.add(t, forMode: .common)
+        timer = t
+    }
+    required init?(coder: NSCoder) { fatalError() }
+    deinit { timer?.invalidate() }
+
+    override func layout() { super.layout(); player.frame = bounds }
+
+    /// Clear any descendant whose layer is a translucent grey/black fill — AVKit's
+    /// controls scrim. Opaque black video backing (alpha 1) is left alone.
+    static func clearScrims(in view: NSView) {
+        if let bg = view.layer?.backgroundColor,
+           let comps = bg.components, bg.numberOfComponents == 2 {  // monochrome: [grey, alpha]
+            let grey = comps[0], alpha = comps[1]
+            if grey <= 0.05, alpha > 0.01, alpha < 0.99 {
+                view.layer?.backgroundColor = NSColor.clear.cgColor
+            }
+        }
+        for s in view.subviews { clearScrims(in: s) }
+    }
 }
 
 /// Holds the player, the media aspect (for the glass frame), and a GIF-style loop.
