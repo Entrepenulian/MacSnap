@@ -91,6 +91,9 @@ final class MediaViewerWindow: NSWindow, NSWindowDelegate {
         isOpaque = false
         hasShadow = true
         delegate = self
+        // The controller owns this window in its array, so don't let AppKit also
+        // release it on close — that double-release would crash (looks like a quit).
+        isReleasedWhenClosed = false
         // Lock the window to the media's framed aspect ratio so it hugs the media
         // and the gaps stay put — the window can't be reshaped to a different ratio.
         contentAspectRatio = content
@@ -277,8 +280,7 @@ private struct VideoPane: View {
             }
         }
         .padding(5)
-        .modifier(ViewerGlass(corner: 15))
-        .overlay(RoundedRectangle(cornerRadius: 15, style: .continuous).strokeBorder(.white.opacity(0.16)))
+        .modifier(GlassPill())
         .shadow(color: .black.opacity(0.32), radius: 16, y: 6)
     }
 
@@ -348,8 +350,7 @@ private struct ActionBar: View {
             ForEach(items) { item in ActionLabelButton(item: item) }
         }
         .padding(4)
-        .modifier(ViewerGlass(corner: 16))
-        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(.white.opacity(0.16)))
+        .modifier(GlassPill())
         .shadow(color: .black.opacity(0.32), radius: 16, y: 6)
     }
 }
@@ -401,6 +402,20 @@ struct ViewerGlass: ViewModifier {
             content.glassEffect(.regular, in: shape)
         } else {
             content.background(.ultraThinMaterial, in: shape)
+        }
+    }
+}
+
+/// A clear-glass **pill** for floating action bars, so the outer shape and the
+/// capsule hover states are the same shape.
+struct GlassPill: ViewModifier {
+    @ViewBuilder func body(content: Content) -> some View {
+        if #available(macOS 26.0, *) {
+            content.glassEffect(.regular, in: Capsule())
+                .overlay(Capsule().strokeBorder(.white.opacity(0.16)))
+        } else {
+            content.background(.ultraThinMaterial, in: Capsule())
+                .overlay(Capsule().strokeBorder(.white.opacity(0.16)))
         }
     }
 }
