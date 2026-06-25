@@ -117,7 +117,7 @@ final class AppController: NSObject, NSApplicationDelegate {
         galleryModel.onRecord        = { [weak self] in self?.closePanel(); self?.recording.toggle() }
         galleryModel.onQuit          = { NSApp.terminate(nil) }
         galleryModel.onUnpin         = { [weak self] url in self?.pins.unpin(url); self?.refreshGallery() }
-        galleryModel.onOpenPin       = { url in NSWorkspace.shared.open(url) }
+        galleryModel.onOpenPin       = { url in MediaViewerController.shared.open(.image(url)) }
         galleryModel.onCopyPin       = { [weak self] url in self?.copyPinAndDismiss(url) }
         galleryModel.onDropFiles     = { [weak self] urls in self?.pinDropped(urls) ?? false }
         galleryModel.onDropImages    = { [weak self] images in self?.pinImages(images) ?? false }
@@ -272,10 +272,10 @@ final class AppController: NSObject, NSApplicationDelegate {
         if galleryPanel != nil { refreshGallery() }
     }
 
-    /// A recording finished and was saved to ~/Desktop/MacSnap Recordings.
-    /// (The custom liquid-glass player opens here once it lands; for now, preview it.)
+    /// A recording finished and was saved to ~/Desktop/MacSnap Recordings —
+    /// open it in the custom Liquid-Glass player.
     private func recordingFinished(_ url: URL) {
-        NSWorkspace.shared.open(url)
+        MediaViewerController.shared.open(.video(url))
     }
 
     // MARK: screenshot a website — captures EXACTLY what you see: the VISIBLE page region
