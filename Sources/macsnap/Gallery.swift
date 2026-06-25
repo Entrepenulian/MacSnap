@@ -126,20 +126,11 @@ struct GalleryView: View {
             .padding(.horizontal, 14).padding(.top, 2).padding(.bottom, 14)
         }
         .scrollIndicators(.hidden)
-        // Colorless alpha fade at the top and bottom edges, so pins dissolve as they
-        // scroll off instead of hard-cutting. It's a mask (transparency only) — no
-        // dark tint, the glass behind shows straight through.
-        .mask(
-            LinearGradient(
-                stops: [
-                    .init(color: .clear, location: 0.0),
-                    .init(color: .black, location: 0.05),
-                    .init(color: .black, location: 0.94),
-                    .init(color: .clear, location: 1.0),
-                ],
-                startPoint: .top, endPoint: .bottom
-            )
-        )
+        // Pins blur away at the top and bottom edges. The strips blur the pins
+        // scrolling under them (within-window blur), masked so the blur is full at
+        // the very edge and clears inward — a soft blur, no fade-to-dark.
+        .overlay(alignment: .top) { EdgeBlur(edge: .top) }
+        .overlay(alignment: .bottom) { EdgeBlur(edge: .bottom) }
         .frame(height: gridHeight)
     }
 
@@ -353,6 +344,28 @@ private func dragTempCopy(of url: URL) -> URL? {
     let dest = dir.appendingPathComponent(url.lastPathComponent)
     try? fm.removeItem(at: dest)
     do { try fm.copyItem(at: url, to: dest); return dest } catch { return nil }
+}
+
+/// A soft "blur away" at a scroll edge: a thin strip of material that blurs the
+/// pins passing under it, masked so the blur is full at the very edge and clears
+/// inward. Pure blur — no color, no darkening.
+struct EdgeBlur: View {
+    enum Edge { case top, bottom }
+    let edge: Edge
+    private let height: CGFloat = 40
+
+    var body: some View {
+        // A real within-window blur of the pins behind the strip, masked so it's
+        // full at the very edge and clears inward — a soft "blur away".
+        VisualEffect(material: .popover, blending: .withinWindow)
+            .frame(height: height)
+            .mask(
+                LinearGradient(colors: [.black, .clear],
+                               startPoint: edge == .top ? .top : .bottom,
+                               endPoint: edge == .top ? .bottom : .top)
+            )
+            .allowsHitTesting(false)
+    }
 }
 
 /// macOS 26 Liquid Glass behind the popover; falls back to vibrancy on older systems.
