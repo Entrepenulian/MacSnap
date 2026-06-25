@@ -110,7 +110,12 @@ final class SelectionCanvas: NSView {
     required init?(coder: NSCoder) { fatalError() }
 
     override var acceptsFirstResponder: Bool { true }
-    override func resetCursorRects() { addCursorRect(bounds, cursor: .crosshair) }
+    override func resetCursorRects() {
+        addCursorRect(bounds, cursor: .crosshair)
+        // The toolbar is for clicking, not aiming — show the normal arrow over it
+        // (its buttons switch to the pointing hand on hover).
+        if let tb = toolbar, tb.frame.width > 1 { addCursorRect(tb.frame, cursor: .arrow) }
+    }
 
     // MARK: coordinate conversion (view ↔ global top-left CG)
 
@@ -139,6 +144,11 @@ final class SelectionCanvas: NSView {
             tb.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -46),
         ])
         toolbar = tb
+        // Rebuild cursor rects once the toolbar has a real frame.
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.window?.invalidateCursorRects(for: self)
+        }
     }
 
     private func setMode(_ m: RecordSelectionController.Mode) {
@@ -264,7 +274,7 @@ struct SelectionToolbar: View {
 
             Rectangle().fill(.white.opacity(0.16)).frame(width: 1, height: 26).padding(.horizontal, 5)
 
-            SelectionPill(title: "Cancel", icon: nil, on: false, action: onCancel)
+            SelectionPill(title: "", icon: "xmark", on: false, action: onCancel)
         }
         .padding(7)
         .modifier(ToolbarGlass())
@@ -282,18 +292,26 @@ private struct SelectionPill: View {
     let action: () -> Void
     @State private var hover = false
 
+    private var iconOnly: Bool { title.isEmpty }
+
     var body: some View {
         Button(action: action) {
             HStack(spacing: 6) {
-                if let icon { Image(systemName: icon).font(.system(size: 12.5, weight: .semibold)) }
-                Text(title).font(.system(size: 13, weight: .medium))
+                if let icon {
+                    Image(systemName: icon).font(.system(size: iconOnly ? 11 : 12.5, weight: .semibold))
+                }
+                if !iconOnly { Text(title).font(.system(size: 13, weight: .medium)) }
             }
             .foregroundStyle(on ? Color.black : .white.opacity(hover ? 1 : 0.82))
-            .padding(.horizontal, 14).padding(.vertical, 8)
-            .background(Capsule().fill(on ? Color.white : .white.opacity(hover ? 0.14 : 0)))
+            .padding(.horizontal, iconOnly ? 9 : 14).padding(.vertical, 8)
+            .background(Capsule().fill(on ? Color.white : .white.opacity(hover ? 0.16 : 0)))
         }
         .buttonStyle(.plain)
-        .onHover { hover = $0 }
+        // Pointing hand over the buttons; the arrow cursor rect covers the gaps.
+        .onHover { h in
+            hover = h
+            if h { NSCursor.pointingHand.push() } else { NSCursor.pop() }
+        }
         .animation(.easeOut(duration: 0.14), value: hover)
     }
 }
