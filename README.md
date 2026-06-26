@@ -2,13 +2,13 @@
 
 # macsnap
 
-**Screenshots that file themselves.**
+**Screenshots that file themselves — and a screen recorder to match.**
 
-A native macOS menu-bar app that catches every screenshot the moment you take it and lets you drop it into the right Desktop folder from a clean floating panel. No more `Screenshot 2026-…​.png` piling up on your desktop.
+A native macOS menu-bar app that catches every screenshot the moment you take it, lets you drop it into the right Desktop folder from a clean floating panel, and records your screen, a window, or a dragged area to **video or GIF** — with resize handles, Pause/Stop controls, and global shortcuts.
 
 Built like the paid tools. Priced like open source: free.
 
-![macOS 14+](https://img.shields.io/badge/macOS-14%2B-111?logo=apple&logoColor=white)
+![macOS 26+](https://img.shields.io/badge/macOS-26%2B-111?logo=apple&logoColor=white)
 ![Swift 6](https://img.shields.io/badge/Swift-6-F05138?logo=swift&logoColor=white)
 ![SwiftUI · AppKit](https://img.shields.io/badge/SwiftUI-·_AppKit-1575F9)
 ![License MIT](https://img.shields.io/badge/License-MIT-2ea44f)
@@ -58,6 +58,28 @@ macsnap fixes the last step. The instant a screenshot is saved, a panel appears 
 
 **It stays on your Mac.** No account, no cloud, no telemetry. macsnap moves files on your own disk. Nothing leaves.
 
+## Record video & GIF
+
+Pick **Record** from the menu and macsnap walks you through a small floating flow at the bottom of the screen — each step a calm cross-fade into the next.
+
+**1 — Choose the format.** Video or GIF.
+
+<img src="docs/record-format.png" width="300" alt="Choose Video or GIF">
+
+**2 — Choose what to record.** Drag an **Area**, click a **Window**, or take the whole **Screen**. In Window mode, hovering dims everything else so the window under your cursor clearly stands out — click it to pick it.
+
+<img src="docs/record-pick.png" width="360" alt="Area, Window, or Screen">
+
+**3 — Dial in the area.** An area selection isn't locked in on release: it gets a white dashed frame with blue handles you can drag to resize, or grab the middle to move. The live pixel size shows as you go. When it's right, hit **Start Recording**.
+
+<img src="docs/record-adjust.png" width="380" alt="Resizable area selection with handles and Start Recording">
+
+**4 — Record, pause, stop.** A control bar floats with a rolling timer and **Pause** / **Stop** — each labelled with its shortcut. Press **⌘P** to pause and **⌘S** to stop from anywhere, even when another app is focused (they override that app's bindings while you record). The rest of the screen is click-through, so a window recording stays fully usable — move it, type into it, keep working — and it still captures just that window.
+
+<img src="docs/record-controls.png" width="340" alt="Recording controls: timer, Pause ⌘P, Stop ⌘S">
+
+When you stop, the recording saves to `~/Desktop/MacSnap Recordings/` and opens in a Liquid-Glass preview with the native macOS media controls. Pin a recording and it shows in the gallery with a play badge; click to watch.
+
 ## Install
 
 Hand this to your coding agent (Claude Code, Cursor, Codex, and friends) and let it do the setup:
@@ -75,13 +97,14 @@ macsnap.app to /Applications, and open it.
 
 Not ready to file it? Ignore the panel and the shot stays on your Desktop like normal. macsnap never deletes anything — it only moves a file when you choose a folder.
 
-Menu-bar icon → **Catch the latest screenshot** pops the panel on your most recent shot, handy for trying it without taking a new one.
+Menu-bar icon → **Catch the latest screenshot** pops the panel on your most recent shot, handy for trying it without taking a new one. **Record** starts the video/GIF flow.
 
 ## How it works
 
 - **Detection:** watches your screenshot folder and fires the instant a new capture's file is complete (it checks the file's end-of-file marker rather than guessing with a delay).
 - **The panel:** a borderless, non-activating window that floats over whatever you're doing without stealing focus.
 - **Filing:** moves the file into `~/Desktop/<folder>`, creating the folder if it's new, and remembers it for next time.
+- **Recording:** ScreenCaptureKit captures the display, window, or cropped area; frames are H.264-encoded to MP4 in real time via AVAssetWriter (paused spans are dropped and re-timed out of the video), and GIFs are transcoded from the MP4 with ImageIO. Global ⌘P/⌘S use Carbon hot keys, so they fire system-wide without Accessibility permission.
 
 ## Build from source
 
@@ -103,8 +126,14 @@ Sources/macsnap/
   Overlay.swift           the one scrollable panel that hosts the corner stack
   ShotView.swift          the SwiftUI glass card UI
   Gallery.swift           the menu-bar dropdown + pinned-shots gallery
-  PinStore.swift          keeps pinned screenshots for the gallery
+  PinStore.swift          keeps pinned screenshots + recordings for the gallery
   WebCapture.swift        finds a browser's visible page region (for Screenshot site)
+  RecordingController.swift orchestrates a recording: permission, picker, save
+  RecordSelection.swift   the record picker + resize handles + Pause/Stop controls
+  ScreenRecorder.swift    ScreenCaptureKit → AVAssetWriter MP4 (with pause/resume)
+  GlobalHotKeys.swift     system-wide ⌘P / ⌘S while recording (Carbon hot keys)
+  GIFExporter.swift       transcodes a recorded MP4 into a looping GIF
+  MediaViewer.swift       Liquid-Glass preview window with native media controls
 ```
 
 ## Built with
