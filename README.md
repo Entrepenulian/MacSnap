@@ -86,7 +86,7 @@ Hand this to your coding agent (Claude Code, Cursor, Codex, and friends) and let
 
 ```
 Clone https://github.com/Entrepenulian/MacSnap, run ./build-app.sh, move
-macsnap.app to /Applications, and open it.
+MacSnap.app to /Applications, and open it.
 ```
 
 ## Using it
@@ -110,15 +110,15 @@ Menu-bar icon → **Catch the latest screenshot** pops the panel on your most re
 
 ```bash
 swift build                    # debug build
-swift run macsnap              # run from the terminal
-swift run macsnap --selftest   # filing + detection self-tests
+swift run MacSnap              # run from the terminal
+swift run MacSnap --selftest   # filing + detection self-tests
 ./build-app.sh                 # release .app bundle
 ```
 
 ## Project layout
 
 ```
-Sources/macsnap/
+Sources/MacSnap/
   main.swift              entry point + CLI flags
   AppController.swift     menu bar, wiring, login-item / thumbnail toggle
   ScreenshotWatcher.swift detects new screenshots the instant they finish

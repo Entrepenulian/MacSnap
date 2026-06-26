@@ -152,8 +152,8 @@ struct GalleryView: View {
             HStack(spacing: 11) {
                 Image(systemName: "camera.viewfinder")
                     .font(.system(size: 13)).foregroundStyle(.white.opacity(0.5)).frame(width: 17)
-                Text("Use MacSnap for screenshots")
-                    .font(.system(size: 12.5)).foregroundStyle(.white.opacity(0.9))
+                Text("Use MacSnap")
+                    .font(.system(size: 12.5)).foregroundStyle(.white.opacity(0.9)).fixedSize()
                 Spacer(minLength: 8)
                 Toggle("", isOn: Binding(get: { model.macsnapEnabled }, set: { _ in model.onToggleMacsnap() }))
                     .labelsHidden().toggleStyle(.switch).tint(accent).controlSize(.small)
