@@ -65,6 +65,7 @@ private extension NSScreen {
 
 final class SelectionPanel: NSPanel {
     let canvas: SelectionCanvas
+    private var controls: ControlsPanel?
 
     init(screen: NSScreen, display: SCDisplay, windows: [SCWindow]) {
         canvas = SelectionCanvas(screen: screen, display: display, windows: windows)
@@ -92,7 +93,93 @@ final class SelectionPanel: NSPanel {
         }
     }
 
-    func dismiss() { orderOut(nil) }
+    /// On recording start the big overlay goes click-through so the recorded
+    /// window/screen stays usable. The controls bar moves into its own small panel
+    /// that still takes clicks (so Pause / Stop work, alongside ⌘P / ⌘S).
+    func enterRecordingChrome() {
+        ignoresMouseEvents = true
+        guard let bar = canvas.detachToolbarForControls() else { return }
+        let cp = ControlsPanel(barHost: bar)
+        cp.fitAndPosition(on: canvas.screen)
+        cp.orderFrontRegardless()
+        controls = cp
+    }
+
+    func dismiss() {
+        controls?.orderOut(nil); controls = nil
+        orderOut(nil)
+    }
+}
+
+/// Hosts the controls bar. Accepts first mouse so the bar's buttons fire on the
+/// first click even though the panel isn't key (so the recorded window keeps
+/// focus), and reports layout so the panel can resize to fit the bar.
+final class BarHostingView: NSHostingView<SelectionBarView> {
+    var onLayout: (() -> Void)?
+    required init(rootView: SelectionBarView) { super.init(rootView: rootView) }
+    @available(*, unavailable) @objc required dynamic init?(coder: NSCoder) { fatalError() }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    override func layout() { super.layout(); onLayout?() }
+}
+
+/// A small floating panel that hosts the recording controls bar. Borderless and
+/// non-activating so it floats above the recorded content and stays clickable
+/// without switching apps. Resizes to fit the bar on every layout (so the bar is
+/// never cropped when its content changes — e.g. Pause ↔ Resume).
+final class ControlsPanel: NSPanel {
+    private weak var barHost: NSView?
+    private var screenForFit: NSScreen?
+
+    init(barHost: NSView) {
+        super.init(contentRect: NSRect(x: 0, y: 0, width: 360, height: 88),
+                   styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        level = NSWindow.Level(rawValue: Int(CGShieldingWindowLevel()) + 1)   // above the dim
+        isOpaque = false
+        backgroundColor = .clear
+        hasShadow = false
+        ignoresMouseEvents = false
+        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
+
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: 360, height: 88))
+        container.autoresizingMask = [.width, .height]
+        barHost.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(barHost)
+        NSLayoutConstraint.activate([
+            barHost.centerXAnchor.constraint(equalTo: container.centerXAnchor),
+            barHost.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+        ])
+        contentView = container
+        self.barHost = barHost
+        (barHost as? BarHostingView)?.onLayout = { [weak self] in self?.refit() }
+    }
+
+    override var canBecomeKey: Bool { true }
+
+    func fitAndPosition(on screen: NSScreen) {
+        screenForFit = screen
+        refit()
+        // The bar animates its size over ~0.32s; re-fit a few times so the panel
+        // settles on the FINAL size and never crops the bar.
+        for d in [0.06, 0.2, 0.4, 0.6] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + d) { [weak self] in self?.refit() }
+        }
+    }
+
+    /// Size to the bar (plus a margin for its shadow) and sit bottom-centre. Only
+    /// resizes when the fitted size actually changes (avoids a layout loop).
+    private func refit() {
+        guard let screen = screenForFit, let host = barHost else { return }
+        host.invalidateIntrinsicContentSize()
+        host.layoutSubtreeIfNeeded()
+        let s = host.fittingSize
+        guard s.width > 1, s.height > 1 else { return }
+        let pad: CGFloat = 50
+        let w = s.width + pad * 2, h = s.height + pad * 2
+        let target = NSRect(x: screen.frame.midX - w / 2, y: screen.frame.minY + 72, width: w, height: h)
+        if abs(target.width - frame.width) > 0.5 || abs(target.height - frame.height) > 0.5 || frame.origin != target.origin {
+            setFrame(target, display: true)
+        }
+    }
 }
 
 // MARK: - Canvas
@@ -130,7 +217,7 @@ final class SelectionCanvas: NSView {
     private var pauseStart: Date?
     private var recTimer: Timer?
 
-    private var toolbar: NSHostingView<SelectionBarView>?
+    private var toolbar: BarHostingView?
     private let barModel = BarModel()   // drives the animated bar-state transitions
 
     // Callbacks
@@ -328,9 +415,9 @@ final class SelectionCanvas: NSView {
         recordingDims = dims
         phase = .recording
         stopHoverPolling()
-        // Become fully click-through so the recorded window/screen stays usable —
-        // move it, type into it, click anything. Recording is driven by ⌘P / ⌘S.
-        window?.ignoresMouseEvents = true
+        // Big overlay goes click-through (recorded window stays usable); the controls
+        // bar moves into its own clickable panel.
+        (window as? SelectionPanel)?.enterRecordingChrome()
         recStart = Date(); pausedTotal = 0; pauseStart = nil; paused = false
         startRecTimer()
         syncBar()
@@ -409,6 +496,14 @@ final class SelectionCanvas: NSView {
 
     // MARK: toolbar
 
+    /// Hand the bar's hosting view to the controls panel for recording.
+    func detachToolbarForControls() -> NSView? {
+        guard let tb = toolbar else { return nil }
+        tb.removeFromSuperview()
+        toolbar = nil
+        return tb
+    }
+
     func installToolbar() {
         syncBar()   // seed the model
         let view = SelectionBarView(
@@ -421,7 +516,7 @@ final class SelectionCanvas: NSView {
             onStart: { [weak self] in self?.startAreaRecording() },
             onPauseToggle: { [weak self] in self?.togglePause() },
             onStop: { [weak self] in self?.onStop() })
-        let tb = NSHostingView(rootView: view)
+        let tb = BarHostingView(rootView: view)
         tb.translatesAutoresizingMaskIntoConstraints = false
         tb.sizingOptions = [.intrinsicContentSize]
         addSubview(tb)
