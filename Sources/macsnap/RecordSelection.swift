@@ -609,41 +609,44 @@ private extension AnyTransition {
     }
 }
 
-/// The premium "Start Recording" button: a glossy red capsule with a soft red
-/// glow, a clean white record dot, a lift on hover, and a tactile press.
+/// The "Start Recording" button: flat red liquid glass with a clean white record
+/// dot. Hover simply darkens the red. Tactile press.
 private struct StartRecordButton: View {
     let action: () -> Void
     @State private var hover = false
 
-    private let top = Color(red: 1.0, green: 0.41, blue: 0.37)
-    private let bottom = Color(red: 0.93, green: 0.20, blue: 0.16)
+    private let base = Color(red: 0.95, green: 0.26, blue: 0.22)
 
     var body: some View {
         Button(action: action) {
             HStack(spacing: 7) {
                 Circle().fill(.white).frame(width: 10, height: 10)
-                    .shadow(color: .black.opacity(0.18), radius: 1, y: 0.5)
                 Text("Start Recording").font(.system(size: 13, weight: .semibold))
             }
             .foregroundStyle(.white)
             .padding(.horizontal, 16).padding(.vertical, 9)
-            .background(
-                ZStack {
-                    Capsule().fill(LinearGradient(colors: [top, bottom], startPoint: .top, endPoint: .bottom))
-                    // top gloss
-                    Capsule().fill(LinearGradient(colors: [.white.opacity(0.32), .clear],
-                                                  startPoint: .top, endPoint: .center))
-                        .blendMode(.plusLighter)
-                    Capsule().strokeBorder(.white.opacity(0.22), lineWidth: 1)
-                }
-            )
-            .brightness(hover ? 0.05 : 0)
-            .shadow(color: bottom.opacity(hover ? 0.55 : 0.38), radius: hover ? 14 : 9, y: hover ? 5 : 3)
-            .scaleEffect(hover ? 1.025 : 1)
+            .modifier(RedGlass(tint: base))
+            // Simple hover: just a darker shade.
+            .overlay(Capsule().fill(.black.opacity(hover ? 0.18 : 0)))
         }
         .buttonStyle(PressScaleStyle())
         .onHover { h in hover = h; if h { NSCursor.pointingHand.push() } else { NSCursor.pop() } }
         .animation(.easeOut(duration: 0.16), value: hover)
+    }
+}
+
+/// Red liquid glass capsule (tinted Liquid Glass on macOS 26; tinted material below).
+private struct RedGlass: ViewModifier {
+    let tint: Color
+    @ViewBuilder func body(content: Content) -> some View {
+        if #available(macOS 26.0, *) {
+            content.glassEffect(.regular.tint(tint), in: Capsule())
+                .overlay(Capsule().strokeBorder(.white.opacity(0.18)))
+        } else {
+            content.background(Capsule().fill(tint))
+                .background(.ultraThinMaterial, in: Capsule())
+                .overlay(Capsule().strokeBorder(.white.opacity(0.18)))
+        }
     }
 }
 
