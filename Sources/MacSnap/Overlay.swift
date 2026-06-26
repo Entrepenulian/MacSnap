@@ -10,7 +10,10 @@ final class OverlayPanel: NSPanel {
                    styleMask: [.nonactivatingPanel, .borderless],
                    backing: .buffered, defer: false)
         isFloatingPanel = true
-        level = .statusBar
+        // Above the menu bar / Dock AND above fullscreen app windows (which render
+        // above .statusBar in their own Space) — so the corner preview shows over
+        // anything: a normal window, a fullscreen app, any Space.
+        level = NSWindow.Level(rawValue: Int(CGShieldingWindowLevel()))
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
         backgroundColor = .clear
         isOpaque = false
