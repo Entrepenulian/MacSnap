@@ -115,7 +115,7 @@ final class SelectionCanvas: NSView {
 
     // Confirmed target rect (view coords) for adjusting / recording.
     private var selRect: NSRect = .zero
-    private var targetIsScreen = false       // recording the whole display (no dim)
+    private var recordingDims = false        // only an Area recording dims the screen
 
     // Adjust (resize / move)
     private enum Grab: Equatable { case none, move, handle(Int), redraw }
@@ -153,17 +153,6 @@ final class SelectionCanvas: NSView {
 
     override var acceptsFirstResponder: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-
-    // During recording, only the controls bar is interactive — clicks elsewhere
-    // pass straight through to the app being recorded.
-    override func hitTest(_ point: NSPoint) -> NSView? {
-        let hit = super.hitTest(point)
-        if phase == .recording {
-            if let tb = toolbar, let hit, hit.isDescendant(of: tb) { return hit }
-            return nil
-        }
-        return hit
-    }
 
     override func resetCursorRects() {
         switch phase {
@@ -230,8 +219,8 @@ final class SelectionCanvas: NSView {
         case .picking:
             switch mode {
             case .area:   dragStart = p; dragRect = NSRect(origin: p, size: .zero)
-            case .screen: startRecording(target: .display(display), rect: bounds, isScreen: true)
-            case .window: if let w = hoverWindow { startRecording(target: .window(w), rect: toView(w.frame), isScreen: false) }
+            case .screen: startRecording(target: .display(display), rect: bounds, dims: false)
+            case .window: if let w = hoverWindow { startRecording(target: .window(w), rect: toView(w.frame), dims: false) }
             }
         case .adjusting:
             if let i = handleAt(p) { grab = .handle(i); grabRect = selRect; grabMouse = p }
@@ -334,11 +323,14 @@ final class SelectionCanvas: NSView {
         needsDisplay = true
     }
 
-    private func startRecording(target: RecordTarget, rect: NSRect, isScreen: Bool) {
+    private func startRecording(target: RecordTarget, rect: NSRect, dims: Bool) {
         selRect = rect
-        targetIsScreen = isScreen
+        recordingDims = dims
         phase = .recording
         stopHoverPolling()
+        // Become fully click-through so the recorded window/screen stays usable —
+        // move it, type into it, click anything. Recording is driven by ⌘P / ⌘S.
+        window?.ignoresMouseEvents = true
         recStart = Date(); pausedTotal = 0; pauseStart = nil; paused = false
         startRecTimer()
         syncBar()
@@ -348,7 +340,7 @@ final class SelectionCanvas: NSView {
     }
 
     func startAreaRecording() {
-        startRecording(target: .area(display, toGlobalRect(selRect)), rect: selRect, isScreen: false)
+        startRecording(target: .area(display, toGlobalRect(selRect)), rect: selRect, dims: true)
     }
 
     /// Called by the global ⌘P / ⌘S hotkeys (only act while recording).
@@ -477,10 +469,13 @@ final class SelectionCanvas: NSView {
             ctx.setFillColor(NSColor.black.withAlphaComponent(0.20).cgColor); ctx.fill(bounds)
             return
         }
-        if phase == .recording && targetIsScreen { return }
+        // While recording, only an Area keeps a dim — window/screen stay untouched.
+        if phase == .recording && !recordingDims { return }
 
-        // Dim everything, then clear the target region.
-        ctx.setFillColor(NSColor.black.withAlphaComponent(0.28).cgColor)
+        // Dim everything, then clear the target region. Hovering a window in the
+        // picker dims the rest more so the hovered window clearly stands out.
+        let strongHover = phase == .picking && mode == .window && hoverWindow != nil
+        ctx.setFillColor(NSColor.black.withAlphaComponent(strongHover ? 0.5 : 0.28).cgColor)
         ctx.fill(bounds)
 
         let hole: NSRect?
