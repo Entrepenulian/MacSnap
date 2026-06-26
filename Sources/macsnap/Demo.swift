@@ -152,7 +152,7 @@ final class DemoController: NSObject, NSApplicationDelegate {
 
         // Real status item + the real flush GalleryPanel — exactly the production path.
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        let img = NSImage(systemSymbolName: "camera.viewfinder", accessibilityDescription: "macsnap")
+        let img = NSImage(systemSymbolName: "camera.viewfinder", accessibilityDescription: "MacSnap")
         img?.isTemplate = true
         item.button?.image = img
         demoStatusItem = item

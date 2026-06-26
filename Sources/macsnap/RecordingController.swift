@@ -120,7 +120,7 @@ final class RecordingController {
     private func screenRecordingAlert() {
         let alert = NSAlert()
         alert.messageText = "One-time setup: Screen Recording"
-        alert.informativeText = "To record your screen, macsnap needs Screen Recording.\n\n1. Click Open Settings and turn ON macsnap under Screen Recording.\n2. Come back and start the recording again.\n\nThanks to a stable signature you only do this once."
+        alert.informativeText = "To record your screen, MacSnap needs Screen Recording.\n\n1. Click Open Settings and turn ON MacSnap under Screen Recording.\n2. Come back and start the recording again.\n\nThanks to a stable signature you only do this once."
         alert.addButton(withTitle: "Open Settings")
         alert.addButton(withTitle: "Later")
         NSApp.activate(ignoringOtherApps: true)

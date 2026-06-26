@@ -75,8 +75,8 @@ final class AppController: NSObject, NSApplicationDelegate {
             _ = try FileManager.default.contentsOfDirectory(atPath: watcher.directory.path)
         } catch {
             let alert = NSAlert()
-            alert.messageText = "macsnap needs access to your Desktop"
-            alert.informativeText = "To file screenshots into Desktop folders, allow macsnap under System Settings → Privacy & Security → Files and Folders."
+            alert.messageText = "MacSnap needs access to your Desktop"
+            alert.informativeText = "To file screenshots into Desktop folders, allow MacSnap under System Settings → Privacy & Security → Files and Folders."
             alert.addButton(withTitle: "Open Settings")
             alert.addButton(withTitle: "Later")
             NSApp.activate(ignoringOtherApps: true)
@@ -100,7 +100,7 @@ final class AppController: NSObject, NSApplicationDelegate {
     private func setupStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {
-            let img = NSImage(systemSymbolName: "camera.viewfinder", accessibilityDescription: "macsnap")
+            let img = NSImage(systemSymbolName: "camera.viewfinder", accessibilityDescription: "MacSnap")
             img?.isTemplate = true
             button.image = img
             button.action = #selector(togglePanel)
@@ -281,7 +281,7 @@ final class AppController: NSObject, NSApplicationDelegate {
         if let button = statusItem.button {
             let live = recording.isRecording
             let img = NSImage(systemSymbolName: live ? "stop.circle.fill" : "camera.viewfinder",
-                              accessibilityDescription: "macsnap")
+                              accessibilityDescription: "MacSnap")
             img?.isTemplate = !live
             button.image = img
             button.contentTintColor = live ? .systemRed : nil
@@ -332,9 +332,9 @@ final class AppController: NSObject, NSApplicationDelegate {
     private func screenRecordingAlert() {
         let alert = NSAlert()
         alert.messageText = "One-time setup: Screen Recording"
-        alert.informativeText = "To capture exactly what you see, macsnap needs Screen Recording — there's no way to screenshot your screen without it.\n\n1. Click Open Settings and turn ON macsnap under Screen Recording.\n2. Come back here and click Relaunch macsnap.\n\nThanks to a stable signature you only do this once — it won't reset on updates."
+        alert.informativeText = "To capture exactly what you see, MacSnap needs Screen Recording — there's no way to screenshot your screen without it.\n\n1. Click Open Settings and turn ON MacSnap under Screen Recording.\n2. Come back here and click Relaunch MacSnap.\n\nThanks to a stable signature you only do this once — it won't reset on updates."
         alert.addButton(withTitle: "Open Settings")
-        alert.addButton(withTitle: "Relaunch macsnap")
+        alert.addButton(withTitle: "Relaunch MacSnap")
         alert.addButton(withTitle: "Later")
         NSApp.activate(ignoringOtherApps: true)
         switch alert.runModal() {

@@ -152,7 +152,7 @@ struct GalleryView: View {
             HStack(spacing: 11) {
                 Image(systemName: "camera.viewfinder")
                     .font(.system(size: 13)).foregroundStyle(.white.opacity(0.5)).frame(width: 17)
-                Text("Use macsnap for screenshots")
+                Text("Use MacSnap for screenshots")
                     .font(.system(size: 12.5)).foregroundStyle(.white.opacity(0.9))
                 Spacer(minLength: 8)
                 Toggle("", isOn: Binding(get: { model.macsnapEnabled }, set: { _ in model.onToggleMacsnap() }))
@@ -167,7 +167,7 @@ struct GalleryView: View {
                       action: model.onRecord)
             ActionRow(icon: "clock.arrow.circlepath", title: "Catch latest screenshot", action: model.onCatchLatest)
             ActionRow(icon: "folder", title: "Open screenshot folder", action: model.onOpenFolder)
-            ActionRow(icon: "power", title: "Quit macsnap", action: model.onQuit)
+            ActionRow(icon: "power", title: "Quit MacSnap", action: model.onQuit)
         }
         .padding(.vertical, 5)
         .background(RoundedRectangle(cornerRadius: 15, style: .continuous).fill(.white.opacity(0.05)))

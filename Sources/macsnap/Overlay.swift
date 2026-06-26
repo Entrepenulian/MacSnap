@@ -252,7 +252,7 @@ final class OverlayController: NSObject {
     private func presentFileError() {
         let alert = NSAlert()
         alert.messageText = "Couldn’t file this screenshot"
-        alert.informativeText = "macsnap may need permission to use your Desktop. Grant it in System Settings → Privacy & Security → Files and Folders, then try again. Your screenshot is untouched."
+        alert.informativeText = "MacSnap may need permission to use your Desktop. Grant it in System Settings → Privacy & Security → Files and Folders, then try again. Your screenshot is untouched."
         alert.addButton(withTitle: "Open Settings")
         alert.addButton(withTitle: "OK")
         NSApp.activate(ignoringOtherApps: true)

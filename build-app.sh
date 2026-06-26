@@ -20,8 +20,8 @@ cat > "${APP}/Contents/Info.plist" <<'PLIST'
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>CFBundleName</key>            <string>macsnap</string>
-  <key>CFBundleDisplayName</key>     <string>macsnap</string>
+  <key>CFBundleName</key>            <string>MacSnap</string>
+  <key>CFBundleDisplayName</key>     <string>MacSnap</string>
   <key>CFBundleIdentifier</key>      <string>com.macsnap.app</string>
   <key>CFBundleVersion</key>         <string>1</string>
   <key>CFBundleShortVersionString</key><string>1.0</string>
