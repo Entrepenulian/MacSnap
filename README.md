@@ -78,7 +78,10 @@ Pick **Record** from the menu and MacSnap walks you through a small floating flo
 
 <img src="docs/record-controls.png" width="340" alt="Recording controls: timer, Pause ⌘P, Stop ⌘S">
 
-When you stop, the recording saves to `~/Desktop/MacSnap Recordings/` and opens in a Liquid-Glass preview with the native macOS media controls. Pin a recording and it shows in the gallery with a play badge; click to watch.
+When you stop, the recording saves to `~/Desktop/MacSnap Recordings/` and opens in a Liquid-Glass preview with the native macOS media controls — play, scrub, and replay right there. Pin a recording and it shows in the gallery with a play badge; click to watch.
+
+<img src="docs/record-preview.png" width="520" alt="The recording preview window with native macOS media controls">
+
 
 ## Install
 
