@@ -64,7 +64,7 @@ final class FolderStore {
     }
 
     /// The folders you most recently saved into (newest first), for the quick-save pills.
-    func recentFolders(max: Int = 3) -> [Folder] {
+    func recentFolders(max: Int = 4) -> [Folder] {
         let fm = FileManager.default
         let paths = UserDefaults.standard.stringArray(forKey: recentsKey) ?? []
         var out: [Folder] = []
@@ -81,6 +81,47 @@ final class FolderStore {
             if out.count >= max { break }
         }
         return out
+    }
+
+    /// Live search across your real folders so the picker can target ANY Finder folder —
+    /// not just the Desktop + ones you've saved into. Walks your home folder (breadth-first,
+    /// a few levels deep), skipping hidden and heavy system/build directories, and returns
+    /// directories whose name contains `query`. Found folders only persist once you save
+    /// into one (which calls `remember`); a folder you merely search past never sticks.
+    func searchSystem(_ query: String, limit: Int = 30) -> [Folder] {
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !q.isEmpty else { return [] }
+        let fm = FileManager.default
+        let home = desktop.deletingLastPathComponent()
+        let prune: Set<String> = ["Library", "node_modules", ".Trash", ".git", "Applications",
+                                   "DerivedData", ".build", "Pods", ".cache", "venv", ".venv"]
+        var results: [Folder] = []
+        var queue: [(URL, Int)] = [(home, 0)]
+        let maxDepth = 4
+        while !queue.isEmpty && results.count < limit {
+            let (dir, depth) = queue.removeFirst()
+            guard let items = try? fm.contentsOfDirectory(
+                at: dir, includingPropertiesForKeys: [.isDirectoryKey],
+                options: [.skipsHiddenFiles, .skipsPackageDescendants]) else { continue }
+            for item in items {
+                guard (try? item.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true else { continue }
+                let name = item.lastPathComponent
+                if prune.contains(name) { continue }
+                if name.lowercased().contains(q) {
+                    let count = (try? fm.contentsOfDirectory(atPath: item.path).count) ?? 0
+                    results.append(Folder(id: item.path, name: name, url: item, count: count))
+                    if results.count >= limit { break }
+                }
+                if depth < maxDepth { queue.append((item, depth + 1)) }
+            }
+        }
+        // Closest matches first: shallower paths and exact prefix matches feel most relevant.
+        results.sort { a, b in
+            let ap = a.name.lowercased().hasPrefix(q), bp = b.name.lowercased().hasPrefix(q)
+            if ap != bp { return ap }
+            return a.url.pathComponents.count < b.url.pathComponents.count
+        }
+        return results
     }
 
     @discardableResult
