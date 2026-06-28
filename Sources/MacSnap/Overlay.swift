@@ -297,9 +297,14 @@ final class OverlayStack {
     private var hosting: NSHostingController<StackView>!
     private let margin: CGFloat = 16     // gap from screen edges
     private var spaceObservers: [NSObjectProtocol] = []
+    private var followTimer: Timer?
+    private var lastScreenFrame: NSRect = .zero
 
     init() { build() }
-    deinit { spaceObservers.forEach { NSWorkspace.shared.notificationCenter.removeObserver($0) } }
+    deinit {
+        spaceObservers.forEach { NSWorkspace.shared.notificationCenter.removeObserver($0) }
+        followTimer?.invalidate()
+    }
 
     private func build() {
         hosting = NSHostingController(rootView: StackView(model: stackModel))
@@ -319,6 +324,27 @@ final class OverlayStack {
                 self?.reassert()
             })
         }
+
+        // The notifications above don't fire for every desktop/Space switch (e.g. moving to
+        // a brand-new empty desktop), and can arrive before the new Space is ready. So while a
+        // preview is up, keep gently re-pinning it to the front of the active Space a few times
+        // a second. orderFrontRegardless doesn't steal focus, so this is invisible — but it
+        // guarantees the preview is ALWAYS on whatever desktop you're looking at.
+        let t = Timer(timeInterval: 0.4, repeats: true) { [weak self] _ in self?.tickFollow() }
+        RunLoop.main.add(t, forMode: .common)
+        followTimer = t
+    }
+
+    /// Lightweight per-tick keep-alive: re-pin to the active screen only if it changed,
+    /// then make sure the panel is frontmost on the current Space.
+    private func tickFollow() {
+        guard !stackModel.cards.isEmpty, let panel else { return }
+        if let screen = NSScreen.main, screen.frame != lastScreenFrame {
+            lastScreenFrame = screen.frame
+            relayout(animated: false)
+        }
+        if panel.alphaValue < 1 { panel.alphaValue = 1 }
+        panel.orderFrontRegardless()
     }
 
     /// Re-pin the panel to the active screen's corner and bring it forward, so a
