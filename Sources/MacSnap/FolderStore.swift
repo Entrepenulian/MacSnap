@@ -64,7 +64,7 @@ final class FolderStore {
     }
 
     /// The folders you most recently saved into (newest first), for the quick-save pills.
-    func recentFolders(max: Int = 4) -> [Folder] {
+    func recentFolders(max: Int = 3) -> [Folder] {
         let fm = FileManager.default
         let paths = UserDefaults.standard.stringArray(forKey: recentsKey) ?? []
         var out: [Folder] = []

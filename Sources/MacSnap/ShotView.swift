@@ -66,10 +66,10 @@ final class ShotModel: ObservableObject, Identifiable {
         self.recentFolders = recentFolders
     }
 
-    /// The quick-save pills: up to 4 most-recent folders, falling back to the Desktop
+    /// The quick-save pills: up to 3 most-recent folders, falling back to the Desktop
     /// baseline so there's always at least one target. They share the row width equally.
     var quickFolders: [Folder] {
-        let r = Array(recentFolders.prefix(4))
+        let r = Array(recentFolders.prefix(3))
         if !r.isEmpty { return r }
         if let root = allFolders.first(where: { $0.isRoot }) { return [root] }
         return Array(allFolders.prefix(1))
