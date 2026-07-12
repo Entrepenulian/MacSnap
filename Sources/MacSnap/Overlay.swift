@@ -299,11 +299,13 @@ final class OverlayStack {
     private var spaceObservers: [NSObjectProtocol] = []
     private var followTimer: Timer?
     private var lastScreenFrame: NSRect = .zero
+    private var pendingReassert: DispatchWorkItem?
 
     init() { build() }
     deinit {
         spaceObservers.forEach { NSWorkspace.shared.notificationCenter.removeObserver($0) }
         followTimer?.invalidate()
+        pendingReassert?.cancel()
     }
 
     private func build() {
@@ -321,7 +323,7 @@ final class OverlayStack {
         for name in [NSWorkspace.activeSpaceDidChangeNotification,
                      NSWorkspace.didActivateApplicationNotification] {
             spaceObservers.append(nc.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
-                self?.reassert()
+                self?.reattachToActiveWorkspace()
             })
         }
 
@@ -339,7 +341,7 @@ final class OverlayStack {
     /// then make sure the panel is frontmost on the current Space.
     private func tickFollow() {
         guard !stackModel.cards.isEmpty, let panel else { return }
-        if let screen = NSScreen.main, screen.frame != lastScreenFrame {
+        if let screen = activeScreen(), screen.frame != lastScreenFrame {
             lastScreenFrame = screen.frame
             relayout(animated: false)
         }
@@ -349,10 +351,24 @@ final class OverlayStack {
 
     /// Re-pin the panel to the active screen's corner and bring it forward, so a
     /// space or app switch can never leave it behind.
-    private func reassert() {
+    private func reattachToActiveWorkspace() {
+        guard !stackModel.cards.isEmpty else { return }
+        pendingReassert?.cancel()
+        reattachPanel()
+
+        // Workspace notifications can arrive before Mission Control finishes changing
+        // Spaces. Reattach once more after that transition settles so the same preview
+        // cannot remain registered only in the workspace it was created in.
+        let work = DispatchWorkItem { [weak self] in self?.reattachPanel() }
+        pendingReassert = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18, execute: work)
+    }
+
+    private func reattachPanel() {
         guard !stackModel.cards.isEmpty else { return }
         relayout(animated: false)
         panel.alphaValue = 1
+        panel.orderOut(nil)
         panel.orderFrontRegardless()
     }
 
@@ -404,7 +420,7 @@ final class OverlayStack {
 
     /// Size the panel to the visible viewport and keep it anchored in the bottom-right corner.
     private func relayout(animated: Bool = true) {
-        guard let screen = NSScreen.main, let panel else { return }
+        guard let screen = activeScreen(), let panel else { return }
         stackModel.screenCap = screen.frame.height - 2 * margin
         stackModel.fitVisibleCards()        // shrink the newest few if needed so 3 always fit
         let h = max(1, stackModel.viewportHeight)
@@ -420,5 +436,13 @@ final class OverlayStack {
         } else {
             panel.setFrame(frame, display: true)
         }
+    }
+
+    /// `NSScreen.main` is the screen with the menu bar, not necessarily the display the
+    /// user is working on. The pointer is the most reliable public signal for the active
+    /// display when this accessory app deliberately never takes keyboard focus.
+    private func activeScreen() -> NSScreen? {
+        let pointer = NSEvent.mouseLocation
+        return NSScreen.screens.first(where: { NSMouseInRect(pointer, $0.frame, false) }) ?? NSScreen.main
     }
 }
