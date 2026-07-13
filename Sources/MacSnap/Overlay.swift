@@ -305,13 +305,11 @@ final class OverlayStack {
     private var spaceObservers: [NSObjectProtocol] = []
     private var followTimer: Timer?
     private var lastScreenFrame: NSRect = .zero
-    private var pendingReassert: DispatchWorkItem?
 
     init() { build() }
     deinit {
         spaceObservers.forEach { NSWorkspace.shared.notificationCenter.removeObserver($0) }
         followTimer?.invalidate()
-        pendingReassert?.cancel()
     }
 
     private func build() {
@@ -329,7 +327,7 @@ final class OverlayStack {
         for name in [NSWorkspace.activeSpaceDidChangeNotification,
                      NSWorkspace.didActivateApplicationNotification] {
             spaceObservers.append(nc.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
-                self?.reattachToActiveWorkspace()
+                self?.followActiveWorkspace()
             })
         }
 
@@ -357,24 +355,13 @@ final class OverlayStack {
 
     /// Re-pin the panel to the active screen's corner and bring it forward, so a
     /// space or app switch can never leave it behind.
-    private func reattachToActiveWorkspace() {
-        guard !stackModel.cards.isEmpty else { return }
-        pendingReassert?.cancel()
-        reattachPanel()
-
-        // Workspace notifications can arrive before Mission Control finishes changing
-        // Spaces. Reattach once more after that transition settles so the same preview
-        // cannot remain registered only in the workspace it was created in.
-        let work = DispatchWorkItem { [weak self] in self?.reattachPanel() }
-        pendingReassert = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18, execute: work)
-    }
-
-    private func reattachPanel() {
+    private func followActiveWorkspace() {
         guard !stackModel.cards.isEmpty else { return }
         relayout(animated: false)
         panel.alphaValue = 1
-        panel.orderOut(nil)
+        // Keep the existing WindowServer surface alive. Hiding and re-showing it here
+        // creates a visible flash on every app/window switch; canJoinAllSpaces already
+        // carries the same panel between Spaces, so a non-hiding raise is sufficient.
         panel.orderFrontRegardless()
     }
 
