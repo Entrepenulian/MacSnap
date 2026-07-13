@@ -2,6 +2,12 @@ import AppKit
 import SwiftUI
 import QuartzCore
 
+enum ActiveScreenGeometry {
+    static func frame(containing pointer: NSPoint, among frames: [NSRect]) -> NSRect? {
+        frames.first(where: { NSMouseInRect(pointer, $0, false) }) ?? frames.first
+    }
+}
+
 /// A borderless, non-activating panel that floats over whatever you're doing
 /// without stealing focus from the app underneath.
 final class OverlayPanel: NSPanel {
@@ -443,6 +449,10 @@ final class OverlayStack {
     /// display when this accessory app deliberately never takes keyboard focus.
     private func activeScreen() -> NSScreen? {
         let pointer = NSEvent.mouseLocation
-        return NSScreen.screens.first(where: { NSMouseInRect(pointer, $0.frame, false) }) ?? NSScreen.main
+        let screens = NSScreen.screens
+        guard let frame = ActiveScreenGeometry.frame(containing: pointer, among: screens.map(\.frame)) else {
+            return NSScreen.main
+        }
+        return screens.first(where: { $0.frame == frame }) ?? NSScreen.main
     }
 }

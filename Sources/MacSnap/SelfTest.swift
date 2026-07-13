@@ -124,6 +124,16 @@ enum SelfTest {
         check(latencyMs >= 0 && latencyMs < 120, "detection latency \(Int(latencyMs))ms (was ~300ms)")
         check(!detected.contains("random-photo.png"), "ignores non-screenshot images")
 
+        print("Active screen routing")
+        let left = NSRect(x: -1440, y: 0, width: 1440, height: 900)
+        let right = NSRect(x: 0, y: 0, width: 1920, height: 1080)
+        check(ActiveScreenGeometry.frame(containing: NSPoint(x: -400, y: 500), among: [right, left]) == left,
+              "routes the preview to the display under the pointer")
+        check(ActiveScreenGeometry.frame(containing: NSPoint(x: 400, y: 500), among: [right, left]) == right,
+              "keeps the preview on the current display")
+        check(ActiveScreenGeometry.frame(containing: NSPoint(x: 4000, y: 500), among: [right, left]) == right,
+              "falls back safely while display geometry changes")
+
         print(ok ? "\nSELFTEST PASS" : "\nSELFTEST FAIL")
         return ok
     }
