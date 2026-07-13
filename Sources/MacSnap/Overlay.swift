@@ -11,6 +11,19 @@ enum ActiveScreenGeometry {
 /// A borderless, non-activating panel that floats over whatever you're doing
 /// without stealing focus from the app underneath.
 final class OverlayPanel: NSPanel {
+    static var persistentCollectionBehavior: NSWindow.CollectionBehavior {
+        var behavior: NSWindow.CollectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
+        if #available(macOS 26.0, *) {
+            // Stage Manager groups windows by application, independently of Spaces.
+            // This is the system-overlay behavior that keeps the preview alongside every
+            // app/window set as well as normal and full-screen Spaces.
+            behavior.insert(.canJoinAllApplications)
+        } else {
+            behavior.insert(.fullScreenAuxiliary)
+        }
+        return behavior
+    }
+
     init(contentRect: NSRect) {
         super.init(contentRect: contentRect,
                    styleMask: [.nonactivatingPanel, .borderless],
@@ -20,7 +33,7 @@ final class OverlayPanel: NSPanel {
         // above .statusBar in their own Space) — so the corner preview shows over
         // anything: a normal window, a fullscreen app, any Space.
         level = NSWindow.Level(rawValue: Int(CGShieldingWindowLevel()))
-        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
+        collectionBehavior = Self.persistentCollectionBehavior
         backgroundColor = .clear
         isOpaque = false
         hasShadow = false                 // SwiftUI draws each card's own shadow

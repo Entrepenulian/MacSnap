@@ -134,6 +134,20 @@ enum SelfTest {
         check(ActiveScreenGeometry.frame(containing: NSPoint(x: 4000, y: 500), among: [right, left]) == right,
               "falls back safely while display geometry changes")
 
+        print("Overlay workspace routing")
+        let overlayBehavior = OverlayPanel.persistentCollectionBehavior
+        check(overlayBehavior.contains(.canJoinAllSpaces),
+              "preview joins every desktop Space")
+        if #available(macOS 26.0, *) {
+            check(overlayBehavior.contains(.canJoinAllApplications),
+                  "preview joins every Stage Manager app/window set")
+            check(!overlayBehavior.contains(.fullScreenAuxiliary),
+                  "uses one non-conflicting Stage Manager/full-screen role")
+        } else {
+            check(overlayBehavior.contains(.fullScreenAuxiliary),
+                  "preview joins full-screen Spaces on older macOS")
+        }
+
         print(ok ? "\nSELFTEST PASS" : "\nSELFTEST FAIL")
         return ok
     }
