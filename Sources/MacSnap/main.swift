@@ -89,11 +89,16 @@ if let i = CommandLine.arguments.firstIndex(of: "--viewer") {
 
 let app = NSApplication.shared
 let delegate: NSApplicationDelegate
+var instanceLock: SingleInstanceLock?
 if CommandLine.arguments.contains("--demo") { delegate = DemoController() }
 else if CommandLine.arguments.contains("--latencytest") { delegate = LatencyController() }
 else if CommandLine.arguments.contains("--deletetest") { delegate = DeleteTestController() }
 else if CommandLine.arguments.contains("--pintest") { delegate = PinTestController() }
-else { delegate = AppController() }
+else {
+    guard let lock = SingleInstanceLock() else { exit(0) }
+    instanceLock = lock       // retain the kernel lock for the app's entire lifetime
+    delegate = AppController()
+}
 app.delegate = delegate
 app.setActivationPolicy(.accessory)
 app.run()

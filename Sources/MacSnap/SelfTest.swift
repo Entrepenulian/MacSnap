@@ -148,6 +148,22 @@ enum SelfTest {
                   "preview joins full-screen Spaces on older macOS")
         }
 
+        print("Single-instance lifecycle")
+        let lockPath = tmp.appendingPathComponent("instance.lock").path
+        var firstLock: SingleInstanceLock? = SingleInstanceLock(path: lockPath)
+        check(firstLock != nil, "first app instance acquires the lifecycle lock")
+        check(SingleInstanceLock(path: lockPath) == nil, "second app instance is rejected")
+        firstLock = nil
+        check(SingleInstanceLock(path: lockPath) != nil, "lock is released automatically when the app exits")
+
+        print("Overlay visibility lifecycle")
+        check(OverlayVisibilityPolicy.shouldOrderOut(fadeGeneration: 4, currentGeneration: 4, hasCards: false),
+              "empty stack can finish hiding when no new screenshot arrived")
+        check(!OverlayVisibilityPolicy.shouldOrderOut(fadeGeneration: 4, currentGeneration: 5, hasCards: true),
+              "stale fade cannot hide a newly arrived screenshot")
+        check(!OverlayVisibilityPolicy.shouldOrderOut(fadeGeneration: 5, currentGeneration: 5, hasCards: true),
+              "panel cannot hide while any screenshot remains")
+
         print(ok ? "\nSELFTEST PASS" : "\nSELFTEST FAIL")
         return ok
     }

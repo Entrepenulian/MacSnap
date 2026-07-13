@@ -8,6 +8,12 @@ enum ActiveScreenGeometry {
     }
 }
 
+enum OverlayVisibilityPolicy {
+    static func shouldOrderOut(fadeGeneration: UInt, currentGeneration: UInt, hasCards: Bool) -> Bool {
+        fadeGeneration == currentGeneration && !hasCards
+    }
+}
+
 /// A borderless, non-activating panel that floats over whatever you're doing
 /// without stealing focus from the app underneath.
 final class OverlayPanel: NSPanel {
@@ -318,6 +324,7 @@ final class OverlayStack {
     private var spaceObservers: [NSObjectProtocol] = []
     private var followTimer: Timer?
     private var lastScreenFrame: NSRect = .zero
+    private var visibilityGeneration: UInt = 0
 
     init() { build() }
     deinit {
@@ -379,6 +386,10 @@ final class OverlayStack {
     }
 
     func add(_ c: OverlayController) {
+        // Invalidates any pending "last card disappeared" completion. Without this,
+        // a screenshot arriving during the 200ms empty-stack fade can be ordered out
+        // by the previous card's completion handler.
+        visibilityGeneration &+= 1
         controllers.append(c)
         c.onClosed = { [weak self, weak c] in if let c { self?.remove(c) } }
         c.onModeChange = { [weak self] in        // picker opened/closed: resize + scroll next runloop
@@ -393,10 +404,9 @@ final class OverlayStack {
         c.makeHostKey = { [weak self] in self?.panel.makeKeyAndOrderFront(nil) }
 
         stackModel.cards.insert(c.model, at: 0)   // newest on top — INSTANT so existing cards never budge
-        let firstShow = panel.alphaValue < 0.01
         relayout(animated: false)                 // instant resize; only the new card animates itself in
+        panel.alphaValue = 1                      // also cancels an in-flight empty-stack fade
         panel.orderFrontRegardless()
-        if firstShow { panel.alphaValue = 1 }
 
         // No manual scroll — defaultScrollAnchor(.top) keeps the new (top) card in view, so
         // the preview just appears without a self-scroll jitter. Just mark it shown.
@@ -411,10 +421,24 @@ final class OverlayStack {
         }
         relayout()
         if stackModel.cards.isEmpty {
+            visibilityGeneration &+= 1
+            let generation = visibilityGeneration
             NSAnimationContext.runAnimationGroup({ ctx in
                 ctx.duration = 0.2
                 panel.animator().alphaValue = 0
-            }, completionHandler: { [weak self] in self?.panel.orderOut(nil) })
+            }, completionHandler: { [weak self] in
+                guard let self else { return }
+                guard OverlayVisibilityPolicy.shouldOrderOut(
+                    fadeGeneration: generation,
+                    currentGeneration: self.visibilityGeneration,
+                    hasCards: !self.stackModel.cards.isEmpty
+                ) else {
+                    self.panel.alphaValue = 1
+                    self.panel.orderFrontRegardless()
+                    return
+                }
+                self.panel.orderOut(nil)
+            })
         }
     }
 
