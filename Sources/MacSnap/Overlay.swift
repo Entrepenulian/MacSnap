@@ -321,14 +321,18 @@ final class OverlayStack {
     private var hosting: NSHostingController<StackView>!
     private let margin: CGFloat = 16     // gap from screen edges
     private var spaceObservers: [NSObjectProtocol] = []
+    private var appObservers: [NSObjectProtocol] = []
     private var followTimer: Timer?
+    private var settledFollow: DispatchWorkItem?
     private var lastScreenFrame: NSRect = .zero
     private var visibilityGeneration: UInt = 0
 
     init() { build() }
     deinit {
         spaceObservers.forEach { NSWorkspace.shared.notificationCenter.removeObserver($0) }
+        appObservers.forEach { NotificationCenter.default.removeObserver($0) }
         followTimer?.invalidate()
+        settledFollow?.cancel()
     }
 
     private func build() {
@@ -343,11 +347,20 @@ final class OverlayStack {
         // behind when this shield-level panel used `.canJoinAllSpaces`.
         let nc = NSWorkspace.shared.notificationCenter
         for name in [NSWorkspace.activeSpaceDidChangeNotification,
-                     NSWorkspace.didActivateApplicationNotification] {
+                     NSWorkspace.didActivateApplicationNotification,
+                     NSWorkspace.didWakeNotification] {
             spaceObservers.append(nc.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
                 self?.followActiveWorkspace()
             })
         }
+        appObservers.append(NotificationCenter.default.addObserver(
+            forName: NSApplication.didChangeScreenParametersNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.lastScreenFrame = .zero
+            self?.followActiveWorkspace()
+        })
 
         // Keep-alive covers a Desktop notification that arrives before its transition has
         // settled. `orderFrontRegardless` moves the nonactivating panel without taking focus.
@@ -370,6 +383,19 @@ final class OverlayStack {
 
     /// Move the panel to the active Desktop and bring it forward without hiding it.
     private func followActiveWorkspace() {
+        guard !stackModel.cards.isEmpty else { return }
+        settledFollow?.cancel()
+        movePanelToActiveWorkspace()
+
+        // activeSpaceDidChange can be delivered while the slide animation still owns the
+        // destination Space. Reassert once after it settles; the panel never hides, so this
+        // closes that timing gap without introducing the old orderOut/orderFront flicker.
+        let work = DispatchWorkItem { [weak self] in self?.movePanelToActiveWorkspace() }
+        settledFollow = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.28, execute: work)
+    }
+
+    private func movePanelToActiveWorkspace() {
         guard !stackModel.cards.isEmpty else { return }
         relayout(animated: false)
         panel.alphaValue = 1
