@@ -136,17 +136,12 @@ enum SelfTest {
 
         print("Overlay workspace routing")
         let overlayBehavior = OverlayPanel.persistentCollectionBehavior
-        check(overlayBehavior.contains(.canJoinAllSpaces),
-              "preview joins every desktop Space")
-        if #available(macOS 26.0, *) {
-            check(overlayBehavior.contains(.canJoinAllApplications),
-                  "preview joins every Stage Manager app/window set")
-            check(!overlayBehavior.contains(.fullScreenAuxiliary),
-                  "uses one non-conflicting Stage Manager/full-screen role")
-        } else {
-            check(overlayBehavior.contains(.fullScreenAuxiliary),
-                  "preview joins full-screen Spaces on older macOS")
-        }
+        check(overlayBehavior.contains(.moveToActiveSpace),
+              "one preview panel follows the active Desktop")
+        check(!overlayBehavior.contains(.canJoinAllSpaces),
+              "preview does not rely on unreliable per-Desktop clones")
+        check(overlayBehavior.contains(.fullScreenAuxiliary),
+              "preview explicitly joins full-screen Spaces")
 
         print("Single-instance lifecycle")
         let lockPath = tmp.appendingPathComponent("instance.lock").path

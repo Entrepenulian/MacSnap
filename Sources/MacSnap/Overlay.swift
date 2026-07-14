@@ -18,15 +18,14 @@ enum OverlayVisibilityPolicy {
 /// without stealing focus from the app underneath.
 final class OverlayPanel: NSPanel {
     static var persistentCollectionBehavior: NSWindow.CollectionBehavior {
-        var behavior: NSWindow.CollectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
-        if #available(macOS 26.0, *) {
-            // Stage Manager groups windows by application, independently of Spaces.
-            // This is the system-overlay behavior that keeps the preview alongside every
-            // app/window set as well as normal and full-screen Spaces.
-            behavior.insert(.canJoinAllApplications)
-        } else {
-            behavior.insert(.fullScreenAuxiliary)
-        }
+        // `canJoinAllSpaces` proved unreliable for this shield-level, nonactivating panel:
+        // WindowServer sometimes kept its clone only on the creation Desktop. Keep one
+        // surface instead and migrate it whenever the active Desktop changes.
+        let behavior: NSWindow.CollectionBehavior = [
+            .moveToActiveSpace,
+            .fullScreenAuxiliary,
+            .ignoresCycle,
+        ]
         return behavior
     }
 
@@ -35,7 +34,7 @@ final class OverlayPanel: NSPanel {
                    styleMask: [.nonactivatingPanel, .borderless],
                    backing: .buffered, defer: false)
         isFloatingPanel = true
-        // Above the menu bar / Dock AND above fullscreen app windows (which render
+        // Above the menu bar / Dock AND above full-screen app windows (which render
         // above .statusBar in their own Space) — so the corner preview shows over
         // anything: a normal window, a fullscreen app, any Space.
         level = NSWindow.Level(rawValue: Int(CGShieldingWindowLevel()))
@@ -339,10 +338,9 @@ final class OverlayStack {
         panel.contentViewController = hosting
         panel.alphaValue = 0
 
-        // Belt-and-suspenders so the preview ALWAYS rides along to the corner of
-        // whatever you switch to. `.canJoinAllSpaces` usually handles this, but
-        // re-asserting on every space/app switch makes it bulletproof — it follows
-        // to a different window, a different desktop, or a fullscreen app.
+        // Move the one live preview panel to whichever Desktop becomes active. A single
+        // migrating surface avoids the stale per-Space clones WindowServer sometimes left
+        // behind when this shield-level panel used `.canJoinAllSpaces`.
         let nc = NSWorkspace.shared.notificationCenter
         for name in [NSWorkspace.activeSpaceDidChangeNotification,
                      NSWorkspace.didActivateApplicationNotification] {
@@ -351,11 +349,8 @@ final class OverlayStack {
             })
         }
 
-        // The notifications above don't fire for every desktop/Space switch (e.g. moving to
-        // a brand-new empty desktop), and can arrive before the new Space is ready. So while a
-        // preview is up, keep gently re-pinning it to the front of the active Space a few times
-        // a second. orderFrontRegardless doesn't steal focus, so this is invisible — but it
-        // guarantees the preview is ALWAYS on whatever desktop you're looking at.
+        // Keep-alive covers a Desktop notification that arrives before its transition has
+        // settled. `orderFrontRegardless` moves the nonactivating panel without taking focus.
         let t = Timer(timeInterval: 0.4, repeats: true) { [weak self] _ in self?.tickFollow() }
         RunLoop.main.add(t, forMode: .common)
         followTimer = t
@@ -373,15 +368,13 @@ final class OverlayStack {
         panel.orderFrontRegardless()
     }
 
-    /// Re-pin the panel to the active screen's corner and bring it forward, so a
-    /// space or app switch can never leave it behind.
+    /// Move the panel to the active Desktop and bring it forward without hiding it.
     private func followActiveWorkspace() {
         guard !stackModel.cards.isEmpty else { return }
         relayout(animated: false)
         panel.alphaValue = 1
         // Keep the existing WindowServer surface alive. Hiding and re-showing it here
-        // creates a visible flash on every app/window switch; canJoinAllSpaces already
-        // carries the same panel between Spaces, so a non-hiding raise is sufficient.
+        // creates a visible flash; moveToActiveSpace plus a non-hiding raise is seamless.
         panel.orderFrontRegardless()
     }
 
